@@ -1,0 +1,10 @@
+{
+  "name": "surgery-cost-intelligence-engine",
+  "version": "0.1.0",
+  "description": "Statistics, similarity matching, outlier detection, recommendation and alert engine for the Hospital Surgery Cost Intelligence module.",
+  "main": "engine/index.js",
+  "scripts": {
+    "test": "node --test tests/**/*.test.js"
+  },
+  "license": "UNLICENSED"
+}
