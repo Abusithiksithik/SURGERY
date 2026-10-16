@@ -1,115 +1,58 @@
 # Hospital Surgery Cost Intelligence & Recommendation Engine
-### Phase 1 (Database + Engine) + Phase 2 (Backend API) + Phase 3 (Frontend) — Complete
 
-This delivers the database, the recommendation/statistics/alert engine,
-a full production REST API, and now a complete React + TypeScript + MUI
-frontend on top of all of it. This is an end-to-end working system.
+React + TypeScript + MUI frontend, Node.js/Express API, PostgreSQL database and recommendation engine.
 
-## What's included
+## Project layout
 
-```
-database/
-  01_schema_core.sql               -- branches, departments, users, surgeons,
-                                       anaesthetists, assistants, surgery types,
-                                       OT rooms, patients, item catalogs
-  02_schema_transactions.sql       -- surgeries fact table, assistants/consumables/
-                                       pharmacy junctions, collections, triggers
-  03_schema_recommendation_audit.sql -- budget_recommendations, overrides,
-                                       alert_thresholds, surgery_alerts, audit_log,
-                                       surgery_status_history
-  04_schema_views.sql              -- v_completed_surgeries + 5 materialized views
-                                       for dashboards, with a refresh function
-  05_schema_functions.sql          -- fn_similar_surgeries(): weighted similarity
-                                       ranking, matches the spec's 7-level priority
+- `backend/` — Express API, JWT authentication, permission middleware, SQL schema bootstrap and tests.
+- `backend/database/split/` — ordered SQL bootstrap/migrations. Sprint 0/Sprint 1 additions are `18_roles_permissions.sql` through `26_surgery_number.sql`.
+- `backend/scripts/import-items.js` — re-runnable item-master importer with a dry-run mode; it never imports opening stock.
+- `frontend/` — React/Vite application.
+- `engine/` — recommendation, statistics, similarity, outlier and alert logic.
 
-engine/
-  statistics.js           -- mean/median/mode/min/max/stddev/variance/percentile/
-                              IQR/moving average/trend analysis/forecast
-  outlierDetection.js     -- IQR fence + Z-score outlier flagging (configurable)
-  similarity.js           -- JS mirror of fn_similar_surgeries, for in-memory
-                              ranking, testing, and admin "what-if" weight tuning
-  recommendationEngine.js -- composes the above into the full per-component +
-                              overall budget recommendation
-  alertEngine.js          -- threshold-based Green/Yellow/Red alert evaluation
-  index.js                -- module entry point
+## Local setup
 
-tests/                    -- 25 unit/integration tests (node --test), all passing
+1. Install Node.js 18+ and PostgreSQL 14+.
+2. In `backend/`, copy `.env.example` to `.env` and replace all placeholders with local development values.
+3. Run `npm ci` in both `backend/` and `frontend/`.
+4. Start the API with `npm run dev` in `backend/` and the UI with `npm run dev` in `frontend/`.
+5. The backend applies ordered SQL files in `database/split/` during startup unless `SKIP_DB_INIT=true`.
 
-backend/                  -- Phase 2: full REST API (Node/Express/Prisma/PostgreSQL)
-  prisma/schema.prisma    -- Prisma models mirroring the SQL schema above
-  src/config/             -- env, Prisma client, logger, Swagger
-  src/middleware/         -- JWT auth, RBAC, validation, centralized error handling
-  src/engine/             -- same engine as above, reused unchanged
-  src/modules/            -- auth, masters, surgeries, recommendations, explorer,
-                              benchmarks, dashboard, alerts, reports
-  src/app.js, server.js   -- Express app + entry point
-  See backend/README.md for full setup instructions and endpoint map.
+Never commit `.env`, production credentials, patient data, database dumps, uploaded files or build output. Rotate credentials that have been exposed. Production requires explicit database and JWT secrets; JWT secrets must each be at least 32 characters and must not be example/development values. Default or placeholder admin passwords are rejected in production.
 
-frontend/                 -- Phase 3: full React + TypeScript + MUI app
-  src/api/                -- typed API clients + JWT-refresh axios instance
-  src/theme/              -- design tokens, light/dark MUI theme
-  src/auth/               -- login, protected routes, auth context
-  src/layout/             -- responsive sidebar/topbar shell
-  src/components/         -- reusable KpiCard, DataTable, charts, filters, etc.
-  src/features/           -- Dashboard, Surgery Budget + Recommendation Panel,
-                              Explorer, Benchmarks, Cost Intelligence,
-                              Alert Center, Reports
-  See frontend/README.md for full setup instructions and screen map.
+## Item import
+
+Run a non-mutating preview against the configured database:
+
+```bash
+cd backend
+npm run import:items -- /path/to/masters-workbook.xlsx --dry-run
 ```
 
-Run tests: `npm test` (uses Node's built-in test runner, no dependencies needed).
+Review new items, exact duplicates and the manual-review list before running without `--dry-run`. Opening stock is intentionally excluded. The source workbook was not included in the supplied project archive, so the importer has not been run against the hospital's actual workbook yet.
 
-## Key design decisions worth knowing about
+## Tests
 
-**Only `status = 'COMPLETED'` surgeries feed statistics.** This is enforced
-at the database view level (`v_completed_surgeries`), not just in
-application code, so no future query can accidentally include
-draft/cancelled/pending/deleted cases in a benchmark.
+- Backend security and migration-registration tests: `cd backend && npm test`.
+- Frontend TypeScript check: `cd frontend && npx tsc -b`.
+- The full Vite bundle should also be built on the target Windows/dev environment. The supplied dependency snapshot lacks Rollup's Linux optional binary, so a Vite bundle could not be produced in this validation environment.
 
-**Recommendations never overwrite budget fields.** `budget_recommendations`
-is a separate table — a snapshot/log of what the engine suggested. The
-actual `surgeries.budget_*` columns are only ever written by the user (via
-the API), and `recommendation_overrides` captures every case where the
-user's entered value differs from the recommendation, with a mandatory
-reason — this is what powers "recommendation acceptance rate" reporting.
+See `IMPLEMENTATION_STATUS.md` for implemented changes and items requiring staging/infrastructure validation.
 
-**Outlier handling is "either IQR or Z-score flags it, excluded by
-default, but toggleable."** `partitionByOutlier()` in `outlierDetection.js`
-returns both clean and outlier sets with a reason attached, and
-`generateRecommendation()` takes an `excludeOutliers` flag so Admins can
-re-run with outliers included.
 
-**Similarity weights are data, not hardcoded logic.** Both the SQL
-function and the JS module take weights as parameters (spec: "Allow
-future weighting of these parameters"), and `budget_recommendations.similarity_weights`
-stores whatever weights were used for reproducibility.
+## App user password fix (2026-10-15)
+- Internal hospital emails such as `management1@hospital.local` are accepted by app-user validation.
+- Editing an app user now updates the password hash when a new password (6–100 characters) is supplied; leaving the field blank keeps the current password.
+- The password input is masked and short passwords show a validation message before save.
+- Backend test suite: 13/13 passed in the provided environment. Frontend production build could not be re-verified in this Linux environment because the installed Rollup native binary was missing; run `npm ci` in `frontend` on the target machine before testing the build.
 
-**Materialized views, not live aggregation, for dashboards.** `mv_surgeon_stats`,
-`mv_surgery_type_stats`, `mv_anaesthetist_stats`, `mv_ot_stats`, and
-`mv_monthly_financials` are refreshed via `fn_refresh_benchmark_views()`
-(intended to be called from a scheduled job or right after a surgery is
-marked completed) rather than computed on every dashboard load — this is
-what makes the "100,000+ surgeries, millions of transactions" performance
-target realistic.
+## Management user login troubleshooting
 
-**Forecasting uses linear regression today, with an explicit ML seam.**
-`statistics.trendAnalysis()` / `forecastNext()` are the baseline. Swapping
-in a real model later just means replacing the implementation of
-`forecastNext` behind the same signature — nothing upstream needs to change.
+If an existing App User is active but cannot sign in after an admin password update, reset the password through the backend's configured database using the interactive helper (it does not print or save the password):
 
-## Not yet built (next phase)
+```powershell
+cd backend
+node scripts/reset-app-user-password.js management1
+```
 
-- Docker Compose (one-command spin-up of Postgres + backend + frontend)
-- Formal FRS/TDD documents and ER diagram image
-- Background job scheduler for materialized-view refresh (the API
-  exposes `POST /benchmarks/refresh` for now — wire it to a cron/queue)
-- Assistants/Consumables/Pharmacy line-item editor UI on the budget page
-  (API endpoints exist; see `frontend/README.md` "Known simplifications")
-- E2E test suite (Cypress/Playwright)
-
-See `backend/README.md` and `frontend/README.md` for what each phase
-delivered in full, including setup steps and how the pieces connect
-end-to-end (auth → recommendation flow → override tracking → alerts).
-
-Tell me which of these to build next, or if you'd like adjustments to
-what's here first.
+The script uses `backend/.env` `DATABASE_URL`, verifies that the user exists and is active, asks for the new password twice, enforces 6–100 characters, hashes it with bcrypt, and updates only that user's `password_hash`. Confirm `DATABASE_URL` points to the intended database before running it. Do not run this against production without authorization.

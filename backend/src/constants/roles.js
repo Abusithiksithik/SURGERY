@@ -2,17 +2,17 @@
 
 const ROLES = Object.freeze({
   ADMIN: 'ADMIN',
-  FINANCE: 'FINANCE',
   MANAGEMENT: 'MANAGEMENT',
-  SURGEON: 'SURGEON',
+  FINANCE: 'FINANCE',
   OT_COORDINATOR: 'OT_COORDINATOR',
+  SURGEON: 'SURGEON',
+  ANAESTHETIST: 'ANAESTHETIST',
+  OT_NURSE: 'OT_NURSE',
+  OT_TECHNICIAN: 'OT_TECHNICIAN',
+  OT_STORE: 'OT_STORE',
   VIEWER: 'VIEWER',
 });
 
-/**
- * Convenience role groups used by route-level rbac() calls, matching
- * the spec's "Finance only" / "Management only" access requirements.
- */
 const ROLE_GROUPS = Object.freeze({
   ALL: Object.values(ROLES),
   FINANCE_AND_ABOVE: [ROLES.ADMIN, ROLES.FINANCE],

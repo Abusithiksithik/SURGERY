@@ -15,6 +15,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import { useAuth } from '@/auth/AuthContext';
 
 export interface ColumnDef<T> {
   header: string;
@@ -46,13 +47,16 @@ interface Props<T extends { isActive?: unknown }> {
   onDeactivate: (id: string) => Promise<unknown>;
   onActivate?: (id: string) => Promise<unknown>;
   getInitialValues?: (row: T) => Record<string, string>;
+  permissionKey?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function MasterCrudTable<T extends { isActive?: unknown } = any>({
   title, columns, rows, loading, fields, idKey,
-  onSearch, onCreate, onUpdate, onDeactivate, onActivate, getInitialValues,
+  onSearch, onCreate, onUpdate, onDeactivate, onActivate, getInitialValues, permissionKey = 'EDIT_MASTERS',
 }: Props<T>) {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission(permissionKey);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editRow, setEditRow] = useState<T | null>(null);
@@ -81,6 +85,13 @@ export function MasterCrudTable<T extends { isActive?: unknown } = any>({
   }
 
   async function handleSave() {
+    const passwordValue = form.password ?? '';
+    if (fields.some((f) => f.key === 'password') && passwordValue.length > 0 && passwordValue.length < 6) {
+      const message = 'Password must be at least 6 characters.';
+      setError(message);
+      window.alert(message);
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -117,9 +128,9 @@ export function MasterCrudTable<T extends { isActive?: unknown } = any>({
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
           sx={{ width: 280 }}
         />
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>
+        {canEdit && <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>
           Add {title.replace(/s$/, '')}
-        </Button>
+        </Button>}
       </Box>
 
       <TableContainer component={Paper} variant="outlined">
@@ -148,16 +159,11 @@ export function MasterCrudTable<T extends { isActive?: unknown } = any>({
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', width: 90 }}>
                     <Stack direction="row" spacing={0}>
-                      <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
-                      {row.isActive !== false
-                        ? (
-                          <IconButton size="small" onClick={() => handleDeactivate(row)} title="Deactivate" color="warning"><BlockIcon fontSize="small" /></IconButton>
-                        ) : (
-                          onActivate && (
-                            <IconButton size="small" onClick={() => handleActivate(row)} title="Activate" color="success"><CheckCircleOutlineIcon fontSize="small" /></IconButton>
-                          )
-                        )
-                      }
+                      {canEdit && <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>}
+                      {canEdit && (row.isActive !== false
+                        ? <IconButton size="small" onClick={() => handleDeactivate(row)} title="Deactivate" color="warning"><BlockIcon fontSize="small" /></IconButton>
+                        : onActivate && <IconButton size="small" onClick={() => handleActivate(row)} title="Activate" color="success"><CheckCircleOutlineIcon fontSize="small" /></IconButton>
+                      )}
                     </Stack>
                   </TableCell>
                 </TableRow>
@@ -185,7 +191,7 @@ export function MasterCrudTable<T extends { isActive?: unknown } = any>({
           ) : (
             <TextField
               key={f.key} label={f.label} required={f.required}
-              type={f.type === 'password' && editRow ? 'text' : (f.type ?? 'text')}
+              type={f.type ?? 'text'}
               placeholder={f.type === 'password' && editRow ? '(unchanged)' : undefined}
               value={form[f.key] ?? ''} size="small" fullWidth
               onChange={(e) => setForm((p) => ({ ...p, [f.key]: e.target.value }))}

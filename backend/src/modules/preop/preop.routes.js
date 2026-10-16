@@ -4,6 +4,7 @@ const express   = require('express');
 const ctrl      = require('./preop.controller');
 const validate  = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
+const { requirePermission } = require('../../middleware/permission.middleware');
 const rbac      = require('../../middleware/rbac.middleware');
 const { ROLE_GROUPS } = require('../../constants/roles');
 const {
@@ -37,7 +38,7 @@ router.get(
 router.post(
   '/templates',
   authenticate,
-  rbac(ROLE_GROUPS.ADMIN_ONLY),
+  requirePermission('EDIT_MASTERS'),
   validate({ body: createTemplateSchema }),
   ctrl.createTemplate
 );
@@ -46,7 +47,7 @@ router.post(
 router.put(
   '/templates/:id',
   authenticate,
-  rbac(ROLE_GROUPS.ADMIN_ONLY),
+  requirePermission('EDIT_MASTERS'),
   validate({ params: idParamSchema, body: updateTemplateSchema }),
   ctrl.updateTemplate
 );
@@ -55,7 +56,7 @@ router.put(
 router.patch(
   '/templates/:id/activate',
   authenticate,
-  rbac(ROLE_GROUPS.ADMIN_ONLY),
+  requirePermission('EDIT_MASTERS'),
   validate({ params: idParamSchema }),
   ctrl.activateTemplate
 );
@@ -64,7 +65,7 @@ router.patch(
 router.patch(
   '/templates/:id/deactivate',
   authenticate,
-  rbac(ROLE_GROUPS.ADMIN_ONLY),
+  requirePermission('EDIT_MASTERS'),
   validate({ params: idParamSchema }),
   ctrl.deactivateTemplate
 );
@@ -73,7 +74,7 @@ router.patch(
 router.put(
   '/templates/:id/items',
   authenticate,
-  rbac(ROLE_GROUPS.ADMIN_ONLY),
+  requirePermission('EDIT_MASTERS'),
   validate({ params: idParamSchema, body: replaceItemsSchema }),
   ctrl.replaceItems
 );

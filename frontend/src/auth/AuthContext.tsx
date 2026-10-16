@@ -11,6 +11,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   hasRole: (...roles: UserRole[]) => boolean;
+  hasPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const hasRole = (...roles: UserRole[]) => !!user && roles.includes(user.role);
+  const hasPermission = (permission: string) => !!user?.permissions?.includes(permission);
 
   if (isLoading) {
     return (
@@ -59,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout, hasRole }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout, hasRole, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

@@ -8,9 +8,9 @@ import { palette, typography } from '@/theme/tokens';
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, hasPermission } = useAuth();
 
-  const visibleItems = navItems.filter((item) => !item.roles || hasRole(...item.roles));
+  const visibleItems = navItems.filter((item) => (!item.roles || hasRole(...item.roles)) && (!item.permission || hasPermission(item.permission)));
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: palette.slate800 }}>

@@ -8,6 +8,7 @@ const listQuerySchema = Joi.object({
   search: Joi.string().allow('').max(150),
   branchId: Joi.string().uuid(),
   isActive: Joi.boolean(),
+  staffType: Joi.string().valid('Surgeon','Anaesthetist','Assistant','Technician','Nurse','Visiting Specialist','Other'),
 });
 
 const surgeonSchema = Joi.object({
@@ -46,6 +47,9 @@ const otRoomSchema = Joi.object({
   roomName: Joi.string().max(150).required(),
   costPerMinute: Joi.number().min(0).default(0),
   roomType: Joi.string().valid('Major','Minor','Cath Lab').optional(),
+  turnaroundMin: Joi.number().integer().min(0).optional(),
+  otStatus: Joi.string().valid('AVAILABLE','IN_USE','UNDER_FUMIGATION','AWAITING_CLEARANCE','MAINTENANCE').optional(),
+  location: Joi.string().max(300).allow('', null).optional(),
 });
 
 const departmentSchema = Joi.object({
@@ -80,18 +84,19 @@ const idParamSchema = Joi.object({
 const appUserSchema = Joi.object({
   branchId:  Joi.string().uuid().optional(),
   username:  Joi.string().min(3).max(60).required(),
-  email:     Joi.string().email().max(120).required(),
+  email:     Joi.string().email({ tlds: { allow: false } }).max(120).required(),
   password:  Joi.string().min(6).max(100).required(),
   fullName:  Joi.string().min(2).max(120).required(),
-  role:      Joi.string().valid('ADMIN','MANAGER','DOCTOR','FINANCE','VIEWER','OT_COORDINATOR').default('VIEWER'),
+  role:      Joi.string().valid('ADMIN','MANAGEMENT','FINANCE','OT_COORDINATOR','SURGEON','ANAESTHETIST','OT_NURSE','OT_TECHNICIAN','OT_STORE','VIEWER').default('VIEWER'),
 });
 
 const appUserUpdateSchema = Joi.object({
   branchId:  Joi.string().uuid().optional(),
-  email:     Joi.string().email().max(120).optional(),
+  email:     Joi.string().email({ tlds: { allow: false } }).max(120).optional(),
   fullName:  Joi.string().min(2).max(120).optional(),
-  role:      Joi.string().valid('ADMIN','MANAGER','DOCTOR','FINANCE','VIEWER','OT_COORDINATOR').optional(),
+  role:      Joi.string().valid('ADMIN','MANAGEMENT','FINANCE','OT_COORDINATOR','SURGEON','ANAESTHETIST','OT_NURSE','OT_TECHNICIAN','OT_STORE','VIEWER').optional(),
   isActive:  Joi.boolean().optional(),
+  password:  Joi.string().min(6).max(100).optional().allow(''),
 });
 
 const bloodGroupSchema = Joi.object({
@@ -103,8 +108,15 @@ const bloodGroupSchema = Joi.object({
 const staffSchema = Joi.object({
   branchId:     Joi.string().uuid().optional().allow('', null),
   name:         Joi.string().min(2).max(120).required(),
-  staffType:    Joi.string().valid('Surgeon','Anaesthetist','Assistant','Technician','Other').required(),
+  staffType:    Joi.string().valid('Surgeon','Anaesthetist','Assistant','Technician','Nurse','Visiting Specialist','Other').required(),
   employeeCode: Joi.string().max(30).optional().allow('', null),
+  qualification: Joi.string().max(160).optional().allow('', null),
+  registrationNo: Joi.string().max(100).optional().allow('', null),
+  specialty: Joi.string().max(160).optional().allow('', null),
+  phone: Joi.string().max(40).optional().allow('', null),
+  email: Joi.string().email().max(160).optional().allow('', null),
+  isExternal: Joi.boolean().optional(),
+  payoutReference: Joi.string().max(500).optional().allow('', null),
   isActive:     Joi.boolean().optional(),
 });
 

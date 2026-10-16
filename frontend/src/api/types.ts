@@ -2,7 +2,7 @@
 // Kept intentionally close to the DB field names (camelCase) so a value
 // can be passed between API calls without remapping.
 
-export type UserRole = 'ADMIN' | 'FINANCE' | 'MANAGEMENT' | 'SURGEON' | 'OT_COORDINATOR' | 'VIEWER';
+export type UserRole = 'ADMIN' | 'MANAGEMENT' | 'FINANCE' | 'OT_COORDINATOR' | 'SURGEON' | 'ANAESTHETIST' | 'OT_NURSE' | 'OT_TECHNICIAN' | 'OT_STORE' | 'VIEWER';
 
 export type SurgeryStatus =
   | 'DRAFT'
@@ -73,6 +73,7 @@ export interface User {
   fullName: string;
   role: UserRole;
   branchId: string | null;
+  permissions?: string[];
 }
 
 export interface Branch {
@@ -124,6 +125,9 @@ export interface SurgeryType {
   code: string;
   name: string;
   packageName?: string | null;
+  specialty?: string | null;
+  indicativePackageAmount?: number | null;
+  typicalOtType?: 'Major' | 'Minor' | 'Cath Lab' | null;
   standardDurationMinutes?: number | null;
   defaultDurationMin?: number | null;
   isActive: boolean;
@@ -136,6 +140,9 @@ export interface OtRoom {
   roomName: string;
   costPerMinute: number;
   roomType?: 'Major' | 'Minor' | 'Cath Lab' | null;
+  turnaroundMin?: number;
+  otStatus?: 'AVAILABLE' | 'IN_USE' | 'UNDER_FUMIGATION' | 'AWAITING_CLEARANCE' | 'MAINTENANCE';
+  location?: string | null;
   isActive: boolean;
 }
 
@@ -143,8 +150,17 @@ export interface Staff {
   staffId: string;
   branchId?: string | null;
   name: string;
-  staffType: 'Surgeon' | 'Anaesthetist' | 'Assistant' | 'Technician' | 'Other';
+  staffType: 'Surgeon' | 'Anaesthetist' | 'Assistant' | 'Technician' | 'Nurse' | 'Visiting Specialist' | 'Other';
   employeeCode?: string | null;
+  qualification?: string | null;
+  registrationNo?: string | null;
+  specialty?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  isExternal?: boolean;
+  legacySurgeonId?: string | null;
+  legacyAnaesthetistId?: string | null;
+  legacyAssistantId?: string | null;
   isActive: boolean;
 }
 
@@ -223,6 +239,20 @@ export interface Surgery {
   planDate?: string | null;
   cancelReason?: string | null;
   comments?: string | null;
+  asaGrade?: number | null;
+  asaEmergency?: boolean;
+  comorbidities?: string | null;
+  pacDate?: string | null;
+  pacByStaffId?: string | null;
+  fitnessRemark?: string | null;
+  specialPrecautions?: string | null;
+  plannedOtType?: 'Major' | 'Minor' | 'Cath Lab' | null;
+  payerType?: 'SELF' | 'INSURANCE' | 'SCHEME' | 'CORPORATE';
+  payerName?: string | null;
+  payerReference?: string | null;
+  preauthAmount?: number | null;
+  hisUhid?: string | null;
+  warnings?: string[];
 
   isOutlier: boolean;
   budgetLocked?: boolean;
@@ -444,4 +474,63 @@ export interface ForecastResult {
   historical: Array<{ month: string; value: number }>;
   trend: { slope: number; intercept: number; direction: 'UP' | 'DOWN' | 'FLAT'; r2: number } | null;
   forecast: Array<{ periodsAhead: number; projectedValue: number }>;
+}
+
+export interface SurgeryActualTeamMember {
+  id: string;
+  surgeryId: string;
+  teamRole: 'PRIMARY_SURGEON' | 'CO_SURGEON' | 'ASSISTANT' | 'ANAESTHETIST' | 'OT_ASSISTANT' | 'OTHER';
+  staffId: string;
+  staffName?: string | null;
+  staffType?: string | null;
+}
+
+export interface SurgeryTimelineEvent {
+  eventId: string;
+  surgeryId: string;
+  eventType: string;
+  eventDatetime: string;
+  recordedBy?: string | null;
+  recordedByName?: string | null;
+  remarks?: string | null;
+}
+
+export interface SurgeryActuals {
+  surgery: {
+    surgeryId: string;
+    surgeryNumber?: string | null;
+    status: string;
+    patientName?: string | null;
+    mrNumber?: string | null;
+    surgeryDate?: string | null;
+    plannedDate?: string | null;
+    plannedStartTime?: string | null;
+    expectedDurationMin?: number | null;
+    otRoomId?: string | null;
+    roomName?: string | null;
+    roomCode?: string | null;
+  };
+  actual: {
+    actualId: string;
+    actualSurgeryDate?: string | null;
+    otRoomId?: string | null;
+    actualStartTime?: string | null;
+    procedurePerformedText?: string | null;
+    procedureModifiedFlag: boolean;
+    additionalProcedureText?: string | null;
+    emergencyUnplannedFlag: boolean;
+    anaesthesiaType?: string | null;
+    complications?: string | null;
+    equipmentUsed?: string | null;
+    implantsUsed?: string | null;
+    suturesUsed?: string | null;
+    staplersStaplesUsed?: string | null;
+    otherMaterialsUsed?: string | null;
+    specialInstructions?: string | null;
+    postOpInstructions?: string | null;
+    remarks?: string | null;
+  } | null;
+  team: SurgeryActualTeamMember[];
+  events: SurgeryTimelineEvent[];
+  actualDurationMinutes: number | null;
 }

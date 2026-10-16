@@ -2,14 +2,14 @@
 
 /**
  * initializeDatabase.js
- * ─────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * Automatic bootstrap on every `npm start / npm run dev`.
  *
  * Steps:
  *   1. Ensure the hospital database exists.
- *   2. Apply schema (01–05) — fully idempotent, safe every boot.
+ *   2. Apply schema (01â€“05) â€” fully idempotent, safe every boot.
  *   3. Seed master data only when the surgeons table is empty.
- *   4. ALWAYS refresh materialized views — even when seed was skipped.
+ *   4. ALWAYS refresh materialized views â€” even when seed was skipped.
  *      Matviews are created WITH NO DATA by 05_indexes.sql; querying
  *      them without a prior REFRESH throws PostgreSQL error 55000
  *      ("materialized view has not been populated").  A plain REFRESH
@@ -43,6 +43,16 @@ const SCHEMA_FILES = [
   path.join(DB_DIR, 'split', '14_surgery_checklist_and_docs.sql'),
   path.join(DB_DIR, 'split', '15_fix_mr_number_unique.sql'),
   path.join(DB_DIR, 'split', '16_dedup_active_templates.sql'),
+  path.join(DB_DIR, 'split', '17_missing_modules.sql'),
+  path.join(DB_DIR, 'split', '18_roles_permissions.sql'),
+  path.join(DB_DIR, 'split', '19_professional_master.sql'),
+  path.join(DB_DIR, 'split', '20_ot_rooms.sql'),
+  path.join(DB_DIR, 'split', '21_vendors.sql'),
+  path.join(DB_DIR, 'split', '22_item_master.sql'),
+  path.join(DB_DIR, 'split', '23_instruments_assets.sql'),
+  path.join(DB_DIR, 'split', '24_procedure_card.sql'),
+  path.join(DB_DIR, 'split', '25_case_condition_payer.sql'),
+  path.join(DB_DIR, 'split', '26_surgery_number.sql'),
 ];
 
 const SEED_FILE = path.join(DB_DIR, 'split', '06_seed.sql');
@@ -84,36 +94,36 @@ function makeClient(connInfo) {
 
 /**
  * Refresh a single materialized view, handling the two expected "not ready" errors:
- *   42P01 — view doesn't exist yet (schema not applied yet, or view was dropped)
- *   55000 — view exists but was created WITH NO DATA and never refreshed
+ *   42P01 â€” view doesn't exist yet (schema not applied yet, or view was dropped)
+ *   55000 â€” view exists but was created WITH NO DATA and never refreshed
  * Any other error is rethrown (real SQL problem we want to know about).
  */
 async function refreshMatview(client, viewName) {
   try {
     await client.query(`REFRESH MATERIALIZED VIEW ${viewName}`);
-    logger.info(`  ✓ refreshed ${viewName}`);
+    logger.info(`  âœ“ refreshed ${viewName}`);
   } catch (err) {
     if (err.code === '42P01') {
-      logger.warn(`  ⚠ ${viewName} does not exist yet — skipping refresh`);
+      logger.warn(`  âš  ${viewName} does not exist yet â€” skipping refresh`);
     } else if (err.code === '55000') {
       // This should not happen if we REFRESH (non-concurrent), but guard anyway
-      logger.warn(`  ⚠ ${viewName} not in prerequisite state — skipping`);
+      logger.warn(`  âš  ${viewName} not in prerequisite state â€” skipping`);
     } else {
-      throw err;   // unexpected — propagate
+      throw err;   // unexpected â€” propagate
     }
   }
 }
 
 /**
  * Refresh all materialized views using the current pg Client.
- * Safe to call on every startup — 0-row views are valid when no data exists yet.
+ * Safe to call on every startup â€” 0-row views are valid when no data exists yet.
  */
 async function refreshAllMatviews(client) {
-  logger.info('  Refreshing materialized views…');
+  logger.info('  Refreshing materialized viewsâ€¦');
   for (const v of MATVIEWS) {
     await refreshMatview(client, v);
   }
-  logger.info('✓ Materialized views refreshed');
+  logger.info('âœ“ Materialized views refreshed');
 }
 
 async function initializeDatabase() {
@@ -124,11 +134,11 @@ async function initializeDatabase() {
     );
   }
 
-  // ── Step 1: Ensure the target database exists ────────────────────────
+  // â”€â”€ Step 1: Ensure the target database exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const connInfo = await ensureDatabaseExists(env.DATABASE_URL);
-  logger.info('✓ PostgreSQL connected');
+  logger.info('âœ“ PostgreSQL connected');
 
-  // ── Step 2: Apply schema (idempotent on every startup) ───────────────
+  // â”€â”€ Step 2: Apply schema (idempotent on every startup) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const client = makeClient(connInfo);
   await client.connect();
 
@@ -137,29 +147,31 @@ async function initializeDatabase() {
       const label = path.basename(filePath);
       try {
         await client.query(readSql(filePath));
-        logger.info(`  ✓ ${label}`);
+        logger.info(`  âœ“ ${label}`);
       } catch (err) {
         throw new Error(`Failed applying ${label}: ${err.message}`);
       }
     }
-    logger.info('✓ Schema applied');
+    logger.info('âœ“ Schema applied');
 
-    // ── Step 3: Seed master + surgery data when surgeons table is empty ──
+    // â”€â”€ Step 3: Seed master + surgery data when surgeons table is empty â”€â”€
     const { rows: surgeonCheck } = await client.query('SELECT 1 FROM surgeons LIMIT 1');
     if (surgeonCheck.length === 0) {
-      logger.info('  No master data found — running seed …');
+      logger.info('  No master data found â€” running seed â€¦');
       try {
         await client.query(readSql(SEED_FILE));
-        logger.info(`✓ Seed complete — login: ${env.ADMIN_USERNAME} / ${env.ADMIN_PASSWORD}`);
+        logger.info('âœ“ SQL seed complete');
       } catch (seedErr) {
-        logger.warn(`  SQL seed failed (${seedErr.message}) — using Node.js bcrypt fallback`);
-        await nodejsSeed(client);
+        logger.warn(`  SQL seed failed (${seedErr.message}) â€” using Node.js fallback for base records`);
       }
+      // Initialize admin credentials from environment; never seed a hardcoded default password.
+      await nodejsSeed(client);
+      logger.info('âœ“ Seed complete â€” admin account initialized');
     } else {
-      logger.info('✓ Seed skipped (master data already present)');
+      logger.info('âœ“ Seed skipped (master data already present)');
     }
 
-    // ── Step 4: ALWAYS refresh materialized views ─────────────────────
+    // â”€â”€ Step 4: ALWAYS refresh materialized views â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // This runs whether or not seed was skipped.  It guarantees that
     // no query hits a "materialized view has not been populated" error
     // (PostgreSQL error 55000) during normal API operation.
@@ -169,7 +181,7 @@ async function initializeDatabase() {
     await client.end();
   }
 
-  logger.info('✓ Database ready');
+  logger.info('âœ“ Database ready');
 }
 
 async function nodejsSeed(client) {
@@ -193,10 +205,10 @@ async function nodejsSeed(client) {
 
   await client.query(
     `INSERT INTO users (user_id, branch_id, username, email, password_hash, full_name, role)
-     SELECT '00000000-0000-0000-0000-000000000003',
-            '00000000-0000-0000-0000-000000000001',
-            $1, $2, $3, $4, 'ADMIN'
-     WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = $1)`,
+     SELECT '00000000-0000-0000-0000-000000000003'::uuid,
+            '00000000-0000-0000-0000-000000000001'::uuid,
+            $1::text, $2::text, $3::text, $4::text, 'ADMIN'
+     WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = $1::text)`,
     [env.ADMIN_USERNAME, env.ADMIN_EMAIL, passwordHash, env.ADMIN_FULL_NAME]
   );
 
@@ -223,7 +235,7 @@ async function nodejsSeed(client) {
     );
   }
 
-  logger.info(`✓ Node.js seed complete — admin: "${env.ADMIN_USERNAME}"`);
+  logger.info('âœ“ Node.js seed complete â€” admin account initialized');
 }
 
 module.exports = { initializeDatabase };

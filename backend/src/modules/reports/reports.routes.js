@@ -4,8 +4,7 @@ const express = require('express');
 const controller = require('./reports.controller');
 const validate = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
-const rbac = require('../../middleware/rbac.middleware');
-const { ROLE_GROUPS } = require('../../constants/roles');
+const { requirePermission } = require('../../middleware/permission.middleware');
 const { surgeryExportQuery, dashboardExportQuery } = require('./reports.validation');
 
 const router = express.Router();
@@ -50,7 +49,7 @@ const router = express.Router();
 router.get(
   '/surgeries',
   authenticate,
-  rbac(ROLE_GROUPS.FINANCE_AND_ABOVE.concat('MANAGEMENT')),
+  requirePermission('VIEW_FINANCIALS'),
   validate({ query: surgeryExportQuery }),
   controller.exportSurgeries
 );
@@ -78,7 +77,7 @@ router.get(
 router.get(
   '/dashboard.pdf',
   authenticate,
-  rbac(ROLE_GROUPS.FINANCE_AND_ABOVE.concat('MANAGEMENT')),
+  requirePermission('VIEW_FINANCIALS'),
   validate({ query: dashboardExportQuery }),
   controller.exportDashboardPdf
 );

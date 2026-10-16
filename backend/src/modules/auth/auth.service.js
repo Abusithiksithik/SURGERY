@@ -59,7 +59,9 @@ async function register(input) {
 }
 
 async function login({ username, password }) {
-  const row = await queryOne('SELECT * FROM users WHERE username = $1', [username]);
+  // Ignore accidental leading/trailing whitespace in the username, but never trim passwords.
+  const normalizedUsername = typeof username === 'string' ? username.trim() : '';
+  const row = await queryOne('SELECT * FROM users WHERE username = $1', [normalizedUsername]);
   if (!row || !row.is_active) {
     throw ApiError.unauthorized('Invalid username or password');
   }
@@ -73,7 +75,7 @@ async function login({ username, password }) {
 
   const user = toUser(row);
   return {
-    user: sanitizeUser(user),
+    user: await getProfile(row.user_id),
     accessToken: signAccessToken(user),
     refreshToken: signRefreshToken(user),
   };
@@ -118,7 +120,17 @@ async function changePassword(userId, { currentPassword, newPassword }) {
 async function getProfile(userId) {
   const row = await queryOne('SELECT * FROM users WHERE user_id = $1', [userId]);
   if (!row) throw ApiError.notFound('User not found');
-  return sanitizeUser(toUser(row));
+  const permissions = await query(
+    `SELECT p.permission_key, CASE
+       WHEN p.permission_key='MANAGE_ROLE_PERMISSIONS' AND u.role::text='ADMIN' THEN TRUE
+       WHEN up.user_id IS NOT NULL THEN up.is_granted
+       ELSE COALESCE(rp.is_granted,FALSE) END AS is_granted
+     FROM users u CROSS JOIN system_permissions p
+     LEFT JOIN system_role_permissions rp ON rp.permission_id=p.permission_id AND rp.role_name=u.role::text
+     LEFT JOIN user_permissions up ON up.permission_id=p.permission_id AND up.user_id=u.user_id
+     WHERE u.user_id=$1 AND p.is_active=TRUE ORDER BY p.permission_key`, [userId]
+  );
+  return { ...sanitizeUser(toUser(row)), permissions: permissions.rows.filter((r) => r.is_granted).map((r) => r.permission_key) };
 }
 
 module.exports = { register, login, refresh, changePassword, getProfile, sanitizeUser };

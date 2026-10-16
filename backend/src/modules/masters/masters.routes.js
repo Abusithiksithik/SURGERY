@@ -5,6 +5,7 @@ const controller = require('./masters.controller');
 const validate = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
 const rbac = require('../../middleware/rbac.middleware');
+const { requirePermission } = require('../../middleware/permission.middleware');
 const { ROLE_GROUPS } = require('../../constants/roles');
 const {
   listQuerySchema,
@@ -48,21 +49,21 @@ function mountEntityRoutes(path, entityController, createSchema) {
   router.post(
     `/${path}`,
     authenticate,
-    rbac(ROLE_GROUPS.ADMIN_ONLY),
+    requirePermission('EDIT_MASTERS'),
     validate({ body: createSchema }),
     entityController.create
   );
   router.put(
     `/${path}/:id`,
     authenticate,
-    rbac(ROLE_GROUPS.ADMIN_ONLY),
+    requirePermission('EDIT_MASTERS'),
     validate({ params: idParamSchema, body: createSchema }),
     entityController.update
   );
   router.delete(
     `/${path}/:id`,
     authenticate,
-    rbac(ROLE_GROUPS.ADMIN_ONLY),
+    requirePermission('EDIT_MASTERS'),
     validate({ params: idParamSchema }),
     entityController.deactivate
   );
@@ -71,7 +72,7 @@ function mountEntityRoutes(path, entityController, createSchema) {
     router.patch(
       `/${path}/:id/activate`,
       authenticate,
-      rbac(ROLE_GROUPS.ADMIN_ONLY),
+      requirePermission('EDIT_MASTERS'),
       validate({ params: idParamSchema }),
       entityController.activate
     );
@@ -247,13 +248,15 @@ mountEntityRoutes('blood-groups', controller.bloodGroups, bloodGroupSchema);
 // App Users — ADMIN only (full CRUD)
 router
   .route('/app-users')
-  .get(authenticate, rbac(ROLE_GROUPS.ADMIN_ONLY), validate({ query: listQuerySchema }), controller.appUsers.list)
-  .post(authenticate, rbac(ROLE_GROUPS.ADMIN_ONLY), validate({ body: appUserSchema }), controller.appUsers.create);
+  .get(authenticate, requirePermission('MANAGE_USERS'), validate({ query: listQuerySchema }), controller.appUsers.list)
+  .post(authenticate, requirePermission('MANAGE_USERS'), validate({ body: appUserSchema }), controller.appUsers.create);
 
 router
   .route('/app-users/:id')
-  .get(authenticate, rbac(ROLE_GROUPS.ADMIN_ONLY), validate({ params: idParamSchema }), controller.appUsers.getById)
-  .put(authenticate, rbac(ROLE_GROUPS.ADMIN_ONLY), validate({ params: idParamSchema, body: appUserUpdateSchema }), controller.appUsers.update)
-  .delete(authenticate, rbac(ROLE_GROUPS.ADMIN_ONLY), validate({ params: idParamSchema }), controller.appUsers.deactivate);
+  .get(authenticate, requirePermission('MANAGE_USERS'), validate({ params: idParamSchema }), controller.appUsers.getById)
+  .put(authenticate, requirePermission('MANAGE_USERS'), validate({ params: idParamSchema, body: appUserUpdateSchema }), controller.appUsers.update)
+  .delete(authenticate, requirePermission('MANAGE_USERS'), validate({ params: idParamSchema }), controller.appUsers.deactivate);
+
+router.use(require('./sprint1.routes'));
 
 module.exports = router;

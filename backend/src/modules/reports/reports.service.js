@@ -36,7 +36,7 @@ async function fetchSurgeriesForExport(filters) {
   const where = `WHERE ${conditions.join(' AND ')}`;
   params.push(10000);
   const rows = await queryRows(
-    `SELECT s.surgery_date, s.status, s.duration_minutes, s.budget_total, s.actual_total,
+    `SELECT s.surgery_number, s.surgery_date, s.status, s.duration_minutes, s.budget_total, s.actual_total,
             s.quoted_price, s.collected_amount, s.profit_amount,
             p.mr_number, p.full_name AS patient_name,
             sg.full_name AS surgeon_name, st.name AS surgery_type_name,
@@ -51,6 +51,7 @@ async function fetchSurgeriesForExport(filters) {
   );
 
   return rows.map((s) => ({
+    surgeryNumber: s.surgery_number || '',
     surgeryDate: s.surgery_date ? new Date(s.surgery_date).toISOString().slice(0, 10) : '',
     mrNumber: s.mr_number || '',
     patientName: s.patient_name || '',

@@ -5,6 +5,7 @@ const controller = require('./alerts.controller');
 const validate = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
 const rbac = require('../../middleware/rbac.middleware');
+const { requirePermission } = require('../../middleware/permission.middleware');
 const { ROLE_GROUPS } = require('../../constants/roles');
 const {
   surgeryIdParamSchema,
@@ -133,7 +134,7 @@ router
   )
   .put(
     authenticate,
-    rbac(ROLE_GROUPS.ADMIN_ONLY),
+    requirePermission('EDIT_MASTERS'),
     validate({ body: thresholdSchema }),
     controller.upsertThreshold
   );

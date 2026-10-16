@@ -9,7 +9,7 @@ import {
 } from '@mui/material';
 import {
   MedicalServices, MeetingRoom, LocalHospital,
-  PeopleAlt, Bloodtype, BadgeOutlined, Checklist,
+  PeopleAlt, Bloodtype, BadgeOutlined, Checklist, Storefront, Inventory, Handyman, DevicesOther,
   Add, Delete, Edit, CheckCircle, Cancel,
 } from '@mui/icons-material';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -22,6 +22,8 @@ import { useDepartments } from '@/hooks/useMasterData';
 import type { Department, OtRoom, SurgeryType, AppUser, BloodGroupOption, Staff, PreOpChecklistTemplate } from '@/api/types';
 import * as preopApi from '@/api/preop.api';
 import { getErrorMessage } from '@/api/client';
+import { formatCurrency } from '@/utils/format';
+import { Sprint1MasterTab, ProcedurePreferenceTab, InstrumentSetsMasterTab } from './Sprint1MastersTabs';
 
 const MAIN_BRANCH = '00000000-0000-0000-0000-000000000001';
 
@@ -85,6 +87,8 @@ function OtRoomsTab() {
         { header: 'Name',      render: (r) => r.roomName },
         { header: 'Type',      render: (r) => r.roomType ?? 'Major', width: 90 },
         { header: '₹/min',     render: (r) => Number(r.costPerMinute).toFixed(2), width: 80 },
+        { header: 'Turnaround', render: (r) => `${r.turnaroundMin ?? 30} min`, width: 100 },
+        { header: 'Status',     render: (r) => r.otStatus ?? 'AVAILABLE', width: 150 },
       ]}
       fields={[
         { key: 'roomCode',       label: 'Room Code',              required: true },
@@ -92,12 +96,15 @@ function OtRoomsTab() {
         { key: 'roomType',       label: 'Room Type',              required: true, type: 'select',
           options: OT_ROOM_TYPES.map((t) => ({ value: t, label: t })), defaultValue: 'Major' },
         { key: 'costPerMinute',  label: 'Cost per Minute (₹)',    type: 'text' },
+        { key: 'turnaroundMin',  label: 'Turnaround (min)',       type: 'text', defaultValue: '30' },
+        { key: 'otStatus',       label: 'OT Status',              type: 'select', defaultValue: 'AVAILABLE', options: ['AVAILABLE','IN_USE','UNDER_FUMIGATION','AWAITING_CLEARANCE','MAINTENANCE'].map((t) => ({value:t,label:t})) },
+        { key: 'location',       label: 'Location' },
       ]}
-      onCreate={(d) => create.mutateAsync({ branchId: MAIN_BRANCH, roomCode: d.roomCode, roomName: d.roomName, roomType: d.roomType || 'Major', costPerMinute: Number(d.costPerMinute) || 0 })}
+      onCreate={(d) => create.mutateAsync({ branchId: MAIN_BRANCH, roomCode: d.roomCode, roomName: d.roomName, roomType: d.roomType || 'Major', costPerMinute: Number(d.costPerMinute) || 0, turnaroundMin: Number(d.turnaroundMin) || 30, otStatus: d.otStatus || 'AVAILABLE', location: d.location || undefined })}
       onUpdate={(id, d) => update.mutateAsync({ id, d: { roomCode: d.roomCode, roomName: d.roomName, roomType: d.roomType || 'Major', costPerMinute: Number(d.costPerMinute) || 0 } })}
       onDeactivate={(id) => deact.mutateAsync(id)}
       onActivate={(id) => activate.mutateAsync(id)}
-      getInitialValues={(r) => ({ roomCode: r.roomCode, roomName: r.roomName, roomType: r.roomType ?? 'Major', costPerMinute: String(r.costPerMinute) })}
+      getInitialValues={(r) => ({ roomCode: r.roomCode, roomName: r.roomName, roomType: r.roomType ?? 'Major', costPerMinute: String(r.costPerMinute), turnaroundMin: String(r.turnaroundMin ?? 30), otStatus: r.otStatus ?? 'AVAILABLE', location: r.location ?? '' })}
     />
   );
 }
@@ -131,6 +138,9 @@ function ProceduresTab() {
         { header: 'Procedure',   render: (r) => r.name },
         { header: 'Department',  render: (r) => deptName(r.departmentId) },
         { header: 'Duration',    render: (r) => r.defaultDurationMin ? `${r.defaultDurationMin} min` : '—', width: 90 },
+        { header: 'Specialty',    render: (r) => r.specialty ?? '—' },
+        { header: 'Indicative Package', render: (r) => r.indicativePackageAmount != null ? formatCurrency(r.indicativePackageAmount) : '—' },
+        { header: 'Typical OT', render: (r) => r.typicalOtType ?? '—' },
       ]}
       fields={[
         { key: 'code',               label: 'Procedure Code',        required: true },
@@ -139,18 +149,27 @@ function ProceduresTab() {
           options: departments.map((d) => ({ value: d.departmentId, label: d.departmentName })) },
         { key: 'defaultDurationMin', label: 'Default Duration (min)', type: 'text' },
         { key: 'packageName',        label: 'Package Name' },
+        { key: 'specialty',          label: 'Specialty' },
+        { key: 'indicativePackageAmount', label: 'Indicative Package Amount (₹)', type: 'text' },
+        { key: 'typicalOtType',      label: 'Typical OT Type', type: 'select', options: OT_ROOM_TYPES.map((t) => ({value:t,label:t})) },
       ]}
       onCreate={(d) => create.mutateAsync({
         code: d.code, name: d.name,
         departmentId: d.departmentId || undefined,
         defaultDurationMin: d.defaultDurationMin ? Number(d.defaultDurationMin) : undefined,
         packageName: d.packageName || undefined,
+        specialty: d.specialty || undefined,
+        indicativePackageAmount: d.indicativePackageAmount ? Number(d.indicativePackageAmount) : undefined,
+        typicalOtType: d.typicalOtType || undefined,
       })}
       onUpdate={(id, d) => update.mutateAsync({ id, d: {
         code: d.code, name: d.name,
         departmentId: d.departmentId || undefined,
         defaultDurationMin: d.defaultDurationMin ? Number(d.defaultDurationMin) : undefined,
         packageName: d.packageName || undefined,
+        specialty: d.specialty || undefined,
+        indicativePackageAmount: d.indicativePackageAmount ? Number(d.indicativePackageAmount) : undefined,
+        typicalOtType: d.typicalOtType || undefined,
       }})}
       onDeactivate={(id) => deact.mutateAsync(id)}
       onActivate={(id) => activate.mutateAsync(id)}
@@ -159,13 +178,16 @@ function ProceduresTab() {
         departmentId: r.departmentId ?? '',
         defaultDurationMin: String(r.defaultDurationMin ?? ''),
         packageName: r.packageName ?? '',
+        specialty: r.specialty ?? '',
+        indicativePackageAmount: String(r.indicativePackageAmount ?? ''),
+        typicalOtType: r.typicalOtType ?? '',
       })}
     />
   );
 }
 
 // ── Staff (unified: Surgeon, Anaesthetist, Assistant, Technician, Other) ──────
-const STAFF_TYPES = ['Surgeon', 'Anaesthetist', 'Assistant', 'Technician', 'Other'];
+const STAFF_TYPES = ['Surgeon', 'Anaesthetist', 'Assistant', 'Technician', 'Nurse', 'Visiting Specialist', 'Other'];
 
 function StaffTab() {
   const qc = useQueryClient();
@@ -194,9 +216,16 @@ function StaffTab() {
         { key: 'staffType',    label: 'Staff Type',   required: true, type: 'select',
           options: STAFF_TYPES.map((t) => ({ value: t, label: t })), defaultValue: 'Surgeon' },
         { key: 'employeeCode', label: 'Employee Code' },
+        { key: 'qualification', label: 'Qualification' },
+        { key: 'registrationNo', label: 'Registration Number' },
+        { key: 'specialty', label: 'Specialty' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'email', label: 'Email', type: 'email' },
+        { key: 'isExternal', label: 'Visiting / External', type: 'select', defaultValue: 'false', options: [{value:'false',label:'No'},{value:'true',label:'Yes'}] },
+        { key: 'payoutReference', label: 'Payout Reference (UPI/reference only)' },
       ]}
-      onCreate={(d) => create.mutateAsync({ branchId: MAIN_BRANCH, name: d.name, staffType: d.staffType, employeeCode: d.employeeCode || undefined })}
-      onUpdate={(id, d) => update.mutateAsync({ id, d: { name: d.name, staffType: d.staffType, employeeCode: d.employeeCode || undefined } })}
+      onCreate={(d) => create.mutateAsync({ branchId: MAIN_BRANCH, name: d.name, staffType: d.staffType, employeeCode: d.employeeCode || undefined, qualification: d.qualification || undefined, registrationNo: d.registrationNo || undefined, specialty: d.specialty || undefined, phone: d.phone || undefined, email: d.email || undefined, isExternal: d.isExternal === 'true', payoutReference: d.payoutReference || undefined })}
+      onUpdate={(id, d) => update.mutateAsync({ id, d: { name: d.name, staffType: d.staffType, employeeCode: d.employeeCode || undefined, qualification: d.qualification || undefined, registrationNo: d.registrationNo || undefined, specialty: d.specialty || undefined, phone: d.phone || undefined, email: d.email || undefined, isExternal: d.isExternal === 'true', payoutReference: d.payoutReference || undefined } })}
       onDeactivate={(id) => deact.mutateAsync(id)}
       onActivate={(id) => activate.mutateAsync(id)}
       getInitialValues={(r) => ({ name: r.name, staffType: r.staffType, employeeCode: r.employeeCode ?? '' })}
@@ -205,7 +234,7 @@ function StaffTab() {
 }
 
 // ── App Users ─────────────────────────────────────────────────────────────────
-const ROLES = ['ADMIN','FINANCE','VIEWER','OT_COORDINATOR','DOCTOR','MANAGER'];
+const ROLES = ['ADMIN','MANAGEMENT','FINANCE','OT_COORDINATOR','SURGEON','ANAESTHETIST','OT_NURSE','OT_TECHNICIAN','OT_STORE','VIEWER'];
 
 function AppUsersTab() {
   const qc = useQueryClient();
@@ -223,6 +252,7 @@ function AppUsersTab() {
   return (
     <MasterCrudTable<AppUser>
       title="App Users" idKey="userId" loading={isLoading} rows={rows} onSearch={setSearch}
+      permissionKey="MANAGE_USERS"
       columns={[
         { header: 'Username',  render: (r) => r.username },
         { header: 'Full Name', render: (r) => r.fullName },
@@ -233,12 +263,12 @@ function AppUsersTab() {
         { key: 'username', label: 'Username',  required: true },
         { key: 'fullName', label: 'Full Name', required: true },
         { key: 'email',    label: 'Email',     required: true, type: 'email' as const },
-        { key: 'password', label: 'Password',  required: true, type: 'password' as const, helperText: 'Leave blank to keep unchanged' },
+        { key: 'password', label: 'Password',  required: false, type: 'password' as const, helperText: 'At least 6 characters. Leave blank when editing to keep the current password.' },
         { key: 'role',     label: 'Role',      required: true, type: 'select' as const, defaultValue: 'VIEWER',
           options: ROLES.map((r) => ({ value: r, label: r })) },
       ]}
       onCreate={(d) => create.mutateAsync({ username: d.username, fullName: d.fullName, email: d.email, password: d.password, role: d.role })}
-      onUpdate={(id, d) => update.mutateAsync({ id, d: { fullName: d.fullName, email: d.email, role: d.role } })}
+      onUpdate={(id, d) => update.mutateAsync({ id, d: { fullName: d.fullName, email: d.email, role: d.role, ...(typeof d.password === 'string' && d.password.length > 0 ? { password: d.password } : {}) } })}
       onDeactivate={(id) => deact.mutateAsync(id)}
       getInitialValues={(r) => ({ username: r.username, fullName: r.fullName, email: r.email, password: '', role: r.role })}
     />
@@ -559,6 +589,11 @@ const TABS = [
   { label: 'Staff',                 icon: <BadgeOutlined fontSize="small" />,   component: <StaffTab /> },
   { label: 'App Users',             icon: <PeopleAlt fontSize="small" />,       component: <AppUsersTab /> },
   { label: 'Blood Groups',          icon: <Bloodtype fontSize="small" />,       component: <BloodGroupsTab /> },
+  { label: 'Vendors',               icon: <Storefront fontSize="small" />,      component: <Sprint1MasterTab resource="vendors" /> },
+  { label: 'Items',                 icon: <Inventory fontSize="small" />,      component: <Sprint1MasterTab resource="items" /> },
+  { label: 'Instruments & Sets',    icon: <Handyman fontSize="small" />,       component: <InstrumentSetsMasterTab /> },
+  { label: 'Assets',                icon: <DevicesOther fontSize="small" />,   component: <Sprint1MasterTab resource="assets" /> },
+  { label: 'Preference Cards',       icon: <MedicalServices fontSize="small" />, component: <ProcedurePreferenceTab /> },
 ];
 
 export function AdminConfigPage() {

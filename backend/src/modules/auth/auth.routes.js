@@ -4,6 +4,7 @@ const express = require('express');
 const controller = require('./auth.controller');
 const validate = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
+const { requirePermission } = require('../../middleware/permission.middleware');
 const {
   registerSchema,
   loginSchema,
@@ -44,7 +45,7 @@ const router = express.Router();
  *       201: { description: User created }
  *       409: { description: Username or email already exists }
  */
-router.post('/register', validate({ body: registerSchema }), controller.register);
+router.post('/register', authenticate, requirePermission('MANAGE_USERS'), validate({ body: registerSchema }), controller.register);
 
 /**
  * @swagger

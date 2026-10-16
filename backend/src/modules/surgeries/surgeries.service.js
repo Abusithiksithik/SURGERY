@@ -87,6 +87,7 @@ async function fetchFullSurgery(client, surgeryId) {
             ss.schedule_id           AS ot_schedule_id,
             ss.planned_date          AS ot_planned_date,
             ss.status                AS ot_schedule_status,
+            ss.priority              AS schedule_priority,
             ss.ot_room_id            AS ot_sched_room_id,
             sr.room_name             AS ot_sched_room_name,
             sr.room_code             AS ot_sched_room_code,
@@ -187,6 +188,11 @@ async function fetchFullSurgery(client, surgeryId) {
   surgery.otExpectedDurationMin = s.ot_expected_duration_min || null;
   surgery.otPlannedDate         = s.ot_planned_date || null;
   surgery.otScheduleStatus      = s.ot_schedule_status || null;
+  surgery.schedulePriority      = s.schedule_priority || null;
+  const clinicalWarnings = [];
+  if (Number(surgery.asaGrade || 0) >= 3 && surgery.plannedOtType === 'Minor') clinicalWarnings.push('ASA grade III or higher with a Minor OT plan requires clinical review.');
+  if (surgery.asaEmergency && surgery.schedulePriority !== 'EMERGENCY') clinicalWarnings.push('ASA emergency is selected but the schedule priority is not EMERGENCY.');
+  surgery.warnings = clinicalWarnings;
 
   // Compute OT Out Time from start time + duration
   if (s.ot_planned_start_time && s.ot_expected_duration_min) {
@@ -339,14 +345,14 @@ async function create(data, userId) {
     diagnosis: 'diagnosis', plannedProcedure: 'planned_procedure',
     sideSite: 'side_site', clinicalNotes: 'clinical_notes',
     planDate: 'plan_date', cancelReason: 'cancel_reason',
+    asaGrade: 'asa_grade', asaEmergency: 'asa_emergency', comorbidities: 'comorbidities',
+    pacDate: 'pac_date', pacByStaffId: 'pac_by_staff_id', fitnessRemark: 'fitness_remark',
+    specialPrecautions: 'special_precautions', plannedOtType: 'planned_ot_type', payerType: 'payer_type',
+    payerName: 'payer_name', payerReference: 'payer_reference', preauthAmount: 'preauth_amount', hisUhid: 'his_uhid',
   };
 
-  const cols = ['status', 'surgery_number', 'created_by', 'updated_by'];
-  const year = new Date().getFullYear();
-  const seqRes = await query(`SELECT nextval('surgery_number_seq') AS n`);
-  const seq = String(seqRes.rows[0].n).padStart(5, '0');
-  const surgeryNumber = `SID-${year}-${seq}`;
-  const vals = ['DRAFT', surgeryNumber, userId || null, userId || null];
+  const cols = ['status', 'created_by', 'updated_by'];
+  const vals = ['DRAFT', userId || null, userId || null];
 
   for (const [camel, snake] of Object.entries(colMap)) {
     if (SKIP.has(camel)) continue;
@@ -712,6 +718,32 @@ async function _syncOtSchedule(surgeryId, newStatus, userId, client) {
 
 // ─── changeStatus ─────────────────────────────────────────────────────────────
 
+async function assertNotSameActor(entityId, action, actorId) {
+  const { rows } = await query(
+    `SELECT changed_by FROM surgery_status_history
+      WHERE surgery_id=$1 AND to_status='SENT_FOR_BUDGET_APPROVAL'
+      ORDER BY changed_at DESC LIMIT 1`, [entityId]
+  );
+  if (!rows[0] || !rows[0].changed_by) {
+    throw ApiError.forbidden('The budget submitter could not be verified from status history. Resubmit the budget for approval before proceeding.');
+  }
+  if (actorId && rows[0].changed_by === actorId) {
+    throw ApiError.forbidden(`The user who submitted this budget cannot ${action} it. A different authorized user must review it.`);
+  }
+}
+
+async function assertPermissionForStatus(userId, permissionKey) {
+  const { rows } = await query(
+    `SELECT COALESCE(up.is_granted,rp.is_granted,FALSE) AS allowed
+       FROM users u JOIN system_permissions p ON p.permission_key=$2 AND p.is_active=TRUE
+       LEFT JOIN system_role_permissions rp ON rp.permission_id=p.permission_id AND rp.role_name=u.role::text
+       LEFT JOIN user_permissions up ON up.user_id=u.user_id AND up.permission_id=p.permission_id
+      WHERE u.user_id=$1 AND u.is_active=TRUE`, [userId,permissionKey]
+  );
+  const allowed = rows[0] && rows[0].allowed;
+  if (!allowed) throw ApiError.forbidden(`Permission '${permissionKey}' is required for this status change.`);
+}
+
 async function changeStatus(id, newStatus, userId, notes, cancelReason) {
   const existing = await getById(id);
   const allowed  = ALLOWED_TRANSITIONS[existing.status] || [];
@@ -722,6 +754,15 @@ async function changeStatus(id, newStatus, userId, notes, cancelReason) {
       `Allowed: ${allowed.join(', ') || 'none'}.`
     );
   }
+
+  if (['BUDGET_APPROVED','REVISE_BUDGET'].includes(newStatus)) {
+    await assertPermissionForStatus(userId, 'APPROVE_BUDGET');
+    await assertNotSameActor(id, newStatus === 'BUDGET_APPROVED' ? 'approve' : 'revise', userId);
+  }
+  if (['SURGERY_COMPLETED','COMPLETED'].includes(newStatus)) {
+    await assertPermissionForStatus(userId, 'MARK_SURGERY_COMPLETED');
+  }
+
 
   // CANCELLED requires a reason
   if (newStatus === 'CANCELLED') {

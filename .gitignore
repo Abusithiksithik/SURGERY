@@ -5,3 +5,9 @@
 dist/
 build/
 coverage/
+uploads/
+*.log
+*.dump
+*.sql.gz
+*.tsbuildinfo
+Dev/Reviews/*.diff

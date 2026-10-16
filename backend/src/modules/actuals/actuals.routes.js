@@ -1,0 +1,13 @@
+'use strict';
+const express=require('express');
+const controller=require('./actuals.controller');
+const validate=require('../../middleware/validate.middleware');
+const {authenticate}=require('../../middleware/auth.middleware');
+const {requirePermission}=require('../../middleware/permission.middleware');
+const {actualsSchema,timelineSchema,idParam}=require('./actuals.validation');
+const router=express.Router();
+router.get('/surgery/:id',authenticate,requirePermission('VIEW_SURGERY_ACTUALS'),validate({params:idParam}),controller.get);
+router.put('/surgery/:id',authenticate,requirePermission('EDIT_SURGERY_ACTUALS'),validate({params:idParam,body:actualsSchema}),controller.save);
+router.post('/surgery/:id/timeline',authenticate,requirePermission('EDIT_SURGERY_ACTUALS'),validate({params:idParam,body:timelineSchema}),controller.addEvent);
+router.delete('/timeline/:id',authenticate,requirePermission('EDIT_SURGERY_ACTUALS'),validate({params:idParam}),controller.removeEvent);
+module.exports=router;

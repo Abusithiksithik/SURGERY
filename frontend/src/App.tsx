@@ -17,6 +17,10 @@ import { PatientEntryPage } from '@/features/patients/PatientEntryPage';
 // Module 3
 import { SchedulingListPage }    from '@/features/scheduling/SchedulingListPage';
 import { SchedulingPage }        from '@/features/scheduling/SchedulingPage';
+import { SurgeryDayActualsListPage, SurgeryDayActualsPage } from '@/features/actuals/SurgeryDayActualsPage';
+import { PreOpChecklistListPage } from '@/features/actuals/PreOpChecklistListPage';
+import { AuditPage } from '@/features/audit/AuditPage';
+import { PermissionsPage } from '@/features/permissions/PermissionsPage';
 // Module 4 — Pre-Op Checklist is now integrated in SchedulingPage tabs
 
 export default function App() {
@@ -37,7 +41,7 @@ export default function App() {
         <Route
           path="/admin/config"
           element={
-            <ProtectedRoute roles={['ADMIN']}>
+            <ProtectedRoute permissions={['EDIT_MASTERS']}>
               <AdminConfigPage />
             </ProtectedRoute>
           }
@@ -50,7 +54,16 @@ export default function App() {
         <Route path="/scheduling" element={<SchedulingListPage />} />
         <Route path="/scheduling/new" element={<SchedulingPage />} />
         <Route path="/scheduling/:scheduleId" element={<SchedulingPage />} />
-        {/* Module 4 — Pre-Op Checklist + Documentation are tabs inside SchedulingPage */}
+        {/* Module 4 — existing checklist remains inside SchedulingPage; this route is a quick launcher */}
+        <Route path="/preop-checklist" element={<PreOpChecklistListPage />} />
+
+        {/* Module 5 — Surgery-Day Actuals */}
+        <Route path="/surgery-day-actuals" element={<ProtectedRoute permissions={['VIEW_SURGERY_ACTUALS']}><SurgeryDayActualsListPage /></ProtectedRoute>} />
+        <Route path="/surgery-day-actuals/:surgeryId" element={<ProtectedRoute permissions={['VIEW_SURGERY_ACTUALS']}><SurgeryDayActualsPage /></ProtectedRoute>} />
+
+        {/* Missing cross-cutting modules */}
+        <Route path="/audit" element={<ProtectedRoute permissions={['VIEW_AUDIT_TRAIL']}><AuditPage /></ProtectedRoute>} />
+        <Route path="/permissions" element={<ProtectedRoute permissions={['MANAGE_ROLE_PERMISSIONS']}><PermissionsPage /></ProtectedRoute>} />
 
         {/* Surgery Entry (list + form) — combined */}
         <Route path="/surgeries" element={<SurgeryListPage />} />
@@ -58,12 +71,12 @@ export default function App() {
         <Route path="/surgeries/:id" element={<SurgeryBudgetPage />} />
         <Route path="/explorer" element={<ExplorerPage />} />
         <Route path="/benchmarks" element={<BenchmarkDashboardPage />} />
-        <Route path="/cost-intelligence" element={<CostIntelligencePage />} />
+        <Route path="/cost-intelligence" element={<ProtectedRoute permissions={['VIEW_FINANCIALS']}><CostIntelligencePage /></ProtectedRoute>} />
         <Route path="/alerts" element={<AlertCenterPage />} />
         <Route
           path="/reports"
           element={
-            <ProtectedRoute roles={['ADMIN', 'FINANCE', 'MANAGEMENT']}>
+            <ProtectedRoute permissions={['VIEW_FINANCIALS']}>
               <ReportsPage />
             </ProtectedRoute>
           }

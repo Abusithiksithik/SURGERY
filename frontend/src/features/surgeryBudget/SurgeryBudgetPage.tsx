@@ -21,6 +21,7 @@ import * as surgeriesApi from '@/api/surgeries.api';
 import * as mastersApi from '@/api/masters.api';
 import * as recommendationsApi from '@/api/recommendations.api';
 import { getErrorMessage } from '@/api/client';
+import { useAuth } from '@/auth/AuthContext';
 import { formatCurrency } from '@/utils/format';
 import type { Patient, SurgeryStatus } from '@/api/types';
 import { ALLOWED_TRANSITIONS_HINT, STATUS_ACTION_LABELS, BUDGET_LOCKED_STATUSES, APPROVAL_ACTIONS } from './constants';
@@ -105,6 +106,7 @@ export function SurgeryBudgetPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
   const topRef = useRef<HTMLDivElement>(null);
 
   const { data: surgeons, isLoading: surgeonsLoading } = useSurgeons();
@@ -113,6 +115,7 @@ export function SurgeryBudgetPage() {
   const { data: departments, isLoading: departmentsLoading } = useDepartments();
   const { data: branches, isLoading: branchesLoading } = useBranches();
   const { data: otRooms, isLoading: otRoomsLoading } = useOtRooms();
+  const { data: clinicalStaff } = useQuery({ queryKey: ['masters', 'clinical-staff'], queryFn: () => mastersApi.staffCrud.list({ limit: 500 }) });
 
   const masterDataLoading = surgeonsLoading || surgeryTypesLoading || anaesthetistsLoading || departmentsLoading || branchesLoading || otRoomsLoading;
 
@@ -130,6 +133,8 @@ export function SurgeryBudgetPage() {
     ipOp: 'OP', admissionNumber: '',
     diagnosis: '', plannedProcedure: '', sideSite: '', clinicalNotes: '',
     comments: '',
+    asaGrade: '', asaEmergency: false, comorbidities: '', pacDate: '', pacByStaffId: '',
+    fitnessRemark: '', specialPrecautions: '', plannedOtType: '', payerType: 'SELF', payerName: '', payerReference: '', preauthAmount: '', hisUhid: '',
     budgetSurgeonFee: '', budgetAssistantCost: '', budgetAnaesthetistFee: '',
     budgetOtCost: '', budgetConsumables: '', budgetPharmacy: '', budgetMiscellaneous: '',
     actualSurgeonFee: '', actualAssistantCost: '', actualAnaesthetistFee: '',
@@ -176,6 +181,10 @@ export function SurgeryBudgetPage() {
         otRoomId: s.otRoomId || '',
         patientAgeYears: s.patientAgeYears ?? '',
         patientGender: s.patientGender || 'UNKNOWN',
+        asaGrade: s.asaGrade ?? '', asaEmergency: Boolean(s.asaEmergency), comorbidities: s.comorbidities ?? '',
+        pacDate: s.pacDate?.slice(0,10) ?? '', pacByStaffId: s.pacByStaffId ?? '', fitnessRemark: s.fitnessRemark ?? '',
+        specialPrecautions: s.specialPrecautions ?? '', plannedOtType: s.plannedOtType ?? '', payerType: s.payerType ?? 'SELF',
+        payerName: s.payerName ?? '', payerReference: s.payerReference ?? '', preauthAmount: s.preauthAmount ?? '', hisUhid: s.hisUhid ?? '',
         surgeryDate: s.surgeryDate?.slice(0, 10) || '',
         ipOp: s.ipOp || 'OP',
         admissionNumber: s.admissionNumber || '',
@@ -541,6 +550,27 @@ export function SurgeryBudgetPage() {
               </Grid>
             </SectionCard>
 
+            {/* ── Patient condition, ASA risk and payer ───────────────── */}
+            <SectionCard title="Patient Condition & Payer" subtitle="Clinical risk and payer reference only. Warnings do not block saving.">
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={3}><TextField select label="ASA Grade" fullWidth size="small" value={form.asaGrade} disabled={isLocked} onChange={e=>setForm(f=>({...f,asaGrade:e.target.value}))}><MenuItem value="">Not recorded</MenuItem>{[1,2,3,4,5,6].map(n=><MenuItem key={n} value={n}>{['','I','II','III','IV','V','VI'][n]}</MenuItem>)}</TextField></Grid>
+                <Grid item xs={12} sm={3}><TextField select label="Emergency (E)" fullWidth size="small" value={form.asaEmergency?'true':'false'} disabled={isLocked} onChange={e=>setForm(f=>({...f,asaEmergency:e.target.value==='true'}))}><MenuItem value="false">No</MenuItem><MenuItem value="true">Yes</MenuItem></TextField></Grid>
+                <Grid item xs={12} sm={3}><TextField select label="Planned OT Type" fullWidth size="small" value={form.plannedOtType} disabled={isLocked} onChange={e=>setForm(f=>({...f,plannedOtType:e.target.value}))}><MenuItem value="">Not selected</MenuItem>{['Major','Minor','Cath Lab'].map(t=><MenuItem key={t} value={t}>{t}</MenuItem>)}</TextField></Grid>
+                <Grid item xs={12} sm={3}><TextField label="PAC Date" type="date" fullWidth size="small" InputLabelProps={{shrink:true}} value={form.pacDate} disabled={isLocked} onChange={e=>setForm(f=>({...f,pacDate:e.target.value}))}/></Grid>
+                <Grid item xs={12} sm={6}><TextField select label="PAC By (Staff / Anaesthetist)" fullWidth size="small" value={form.pacByStaffId} disabled={isLocked} onChange={e=>setForm(f=>({...f,pacByStaffId:e.target.value}))}><MenuItem value="">Not selected</MenuItem>{(clinicalStaff?.data??[]).filter(st=>st.isActive!==false&&['Anaesthetist','Visiting Specialist'].includes(st.staffType)).map(st=><MenuItem key={st.staffId} value={st.staffId}>{st.name} — {st.staffType}</MenuItem>)}</TextField></Grid>
+                <Grid item xs={12} sm={6}><TextField label="Hospital M.No / HIS UHID" fullWidth size="small" value={form.hisUhid || selectedPatient?.mrNumber || ''} InputProps={{readOnly:true}} helperText="Auto-filled from patient M.No"/></Grid>
+                <Grid item xs={12}><TextField label="Comorbidities" fullWidth multiline rows={2} value={form.comorbidities} disabled={isLocked} onChange={e=>setForm(f=>({...f,comorbidities:e.target.value}))}/></Grid>
+                <Grid item xs={12} sm={6}><TextField label="Fitness Remark" fullWidth multiline rows={2} value={form.fitnessRemark} disabled={isLocked} onChange={e=>setForm(f=>({...f,fitnessRemark:e.target.value}))}/></Grid>
+                <Grid item xs={12} sm={6}><TextField label="Special Precautions" fullWidth multiline rows={2} value={form.specialPrecautions} disabled={isLocked} onChange={e=>setForm(f=>({...f,specialPrecautions:e.target.value}))}/></Grid>
+                <Grid item xs={12} sm={3}><TextField select label="Payer Type" fullWidth size="small" value={form.payerType} disabled={isLocked} onChange={e=>setForm(f=>({...f,payerType:e.target.value}))}>{['SELF','INSURANCE','SCHEME','CORPORATE'].map(t=><MenuItem key={t} value={t}>{t}</MenuItem>)}</TextField></Grid>
+                <Grid item xs={12} sm={3}><TextField label="Payer / Insurer Name" fullWidth size="small" value={form.payerName} disabled={isLocked} onChange={e=>setForm(f=>({...f,payerName:e.target.value}))}/></Grid>
+                <Grid item xs={12} sm={3}><TextField label="Policy / Pre-auth Reference" fullWidth size="small" value={form.payerReference} disabled={isLocked} onChange={e=>setForm(f=>({...f,payerReference:e.target.value}))}/></Grid>
+                <Grid item xs={12} sm={3}><TextField label="Pre-auth Amount (₹)" type="number" fullWidth size="small" value={form.preauthAmount} disabled={isLocked} onChange={e=>setForm(f=>({...f,preauthAmount:e.target.value}))}/></Grid>
+              </Grid>
+              {Number(form.asaGrade)>=3&&form.plannedOtType==='Minor'&&<Alert severity="warning" sx={{mt:2}}>ASA grade III or higher with a Minor OT plan requires clinical review. Saving is allowed.</Alert>}
+              {[...(existingQuery.data?.warnings ?? []), ...(saveMutation.data?.warnings ?? [])].filter((warning:string,index:number,all:string[])=>all.indexOf(warning)===index).map((warning:string)=><Alert key={warning} severity="warning" sx={{mt:1}}>{warning}</Alert>)}
+            </SectionCard>
+
             {/* ── 2. STATUS ────────────────────────────────────────────── */}
             {isEdit && existingQuery.data && (
               <SectionCard title="Status">
@@ -549,7 +579,11 @@ export function SurgeryBudgetPage() {
                     Current: <StatusChip status={existingQuery.data.status} />
                   </Typography>
                   <Divider orientation="vertical" flexItem />
-                  {nextStatuses.map((nextStatus) => (
+                  {nextStatuses.filter((nextStatus) => {
+                    if (['BUDGET_APPROVED','REVISE_BUDGET'].includes(nextStatus)) return hasPermission('APPROVE_BUDGET');
+                    if (['SURGERY_COMPLETED','COMPLETED'].includes(nextStatus)) return hasPermission('MARK_SURGERY_COMPLETED');
+                    return true;
+                  }).map((nextStatus) => (
                     <Button
                       key={nextStatus}
                       size="small"
@@ -795,6 +829,10 @@ function buildPayload(form: Record<string, any>, overrideReasons: Record<string,
     sideSite: form.sideSite || undefined,
     clinicalNotes: form.clinicalNotes || undefined,
     comments: form.comments || undefined,
+    asaGrade: numeric(form.asaGrade), asaEmergency: Boolean(form.asaEmergency), comorbidities: form.comorbidities || undefined,
+    pacDate: form.pacDate || undefined, pacByStaffId: form.pacByStaffId || undefined, fitnessRemark: form.fitnessRemark || undefined,
+    specialPrecautions: form.specialPrecautions || undefined, plannedOtType: form.plannedOtType || undefined, payerType: form.payerType || 'SELF',
+    payerName: form.payerName || undefined, payerReference: form.payerReference || undefined, preauthAmount: numeric(form.preauthAmount), hisUhid: form.hisUhid || undefined,
     budgetSurgeonFee: numeric(form.budgetSurgeonFee) ?? 0,
     budgetAssistantCost: numeric(form.budgetAssistantCost) ?? 0,
     budgetAnaesthetistFee: numeric(form.budgetAnaesthetistFee) ?? 0,

@@ -19,30 +19,23 @@ ON CONFLICT (branch_code) DO NOTHING;
 -- ─────────────────────────────────────────────────────────────────────
 -- DEPARTMENTS
 -- ─────────────────────────────────────────────────────────────────────
--- NOTE: The Node.js bcrypt fallback seed creates GEN with UUID ...0002.
--- The SQL seed inserts ...0010 for GEN with ON CONFLICT DO NOTHING, so
--- if GEN already exists as ...0002 the ...0010 row is silently skipped
--- and surgeons below would fail an FK check.
--- Fix: insert the canonical ...0010 UUID only when GEN does not yet exist;
--- surgeons below reference ...0002 for GEN so they work in both paths.
+-- The Node.js fallback may already have created GEN under a different UUID.
+-- Keep that existing department; add ORTHO/CARDIO only when their codes are absent.
 INSERT INTO departments (department_id, branch_id, department_code, department_name)
-VALUES
-  ('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000001','GEN','General Surgery'),
-  ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000001','ORTHO','Orthopaedics'),
-  ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000001','CARDIO','Cardiology')
+SELECT v.department_id, v.branch_id, v.department_code, v.department_name
+FROM (VALUES
+  ('00000000-0000-0000-0000-000000000010'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,'GEN','General Surgery'),
+  ('00000000-0000-0000-0000-000000000011'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,'ORTHO','Orthopaedics'),
+  ('00000000-0000-0000-0000-000000000012'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,'CARDIO','Cardiology')
+) AS v(department_id, branch_id, department_code, department_name)
+WHERE NOT EXISTS (
+  SELECT 1 FROM departments d
+  WHERE d.branch_id = v.branch_id
+    AND d.department_code = v.department_code
+)
 ON CONFLICT (branch_id, department_code) DO NOTHING;
 
--- ─────────────────────────────────────────────────────────────────────
--- ADMIN USER
--- ─────────────────────────────────────────────────────────────────────
-INSERT INTO users (user_id, branch_id, username, email, password_hash, full_name, role)
-SELECT
-    '00000000-0000-0000-0000-000000000003',
-    '00000000-0000-0000-0000-000000000001',
-    'admin','admin@hospital.local',
-    crypt('Admin@12345', gen_salt('bf', 12)),
-    'System Administrator','ADMIN'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+-- Admin credentials are initialized by initializeDatabase.js from validated environment settings.
 
 -- ─────────────────────────────────────────────────────────────────────
 -- SURGEONS
@@ -53,15 +46,15 @@ INSERT INTO surgeons (surgeon_id, branch_id, department_id, employee_code, full_
 SELECT * FROM (VALUES
   ('00000000-0000-0000-0000-000000000020'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,(SELECT department_id FROM departments WHERE branch_id='00000000-0000-0000-0000-000000000001' AND department_code='GEN' LIMIT 1),'S001','Dr. Arun Kumar','General Surgeon'),
   ('00000000-0000-0000-0000-000000000021'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,(SELECT department_id FROM departments WHERE branch_id='00000000-0000-0000-0000-000000000001' AND department_code='GEN' LIMIT 1),'S002','Dr. Priya Nair','Laparoscopic Surgeon'),
-  ('00000000-0000-0000-0000-000000000022'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000011'::uuid,'S003','Dr. Ramesh Babu','Orthopaedic Surgeon'),
-  ('00000000-0000-0000-0000-000000000023'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000012'::uuid,'S004','Dr. Meena Sundaram','Cardiothoracic Surgeon')
+  ('00000000-0000-0000-0000-000000000022'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,(SELECT department_id FROM departments WHERE branch_id='00000000-0000-0000-0000-000000000001' AND department_code='ORTHO' LIMIT 1),'S003','Dr. Ramesh Babu','Orthopaedic Surgeon'),
+  ('00000000-0000-0000-0000-000000000023'::uuid,'00000000-0000-0000-0000-000000000001'::uuid,(SELECT department_id FROM departments WHERE branch_id='00000000-0000-0000-0000-000000000001' AND department_code='CARDIO' LIMIT 1),'S004','Dr. Meena Sundaram','Cardiothoracic Surgeon')
 ) AS v(surgeon_id, branch_id, department_id, employee_code, full_name, specialization)
 ON CONFLICT (employee_code) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- ANAESTHETISTS
 -- ─────────────────────────────────────────────────────────────────────
--- 'qualification' column was in the seed but never in the schema — removed.
+-- Qualification is optional; migration 19 adds it to legacy databases that lack it.
 INSERT INTO anaesthetists (anaesthetist_id, branch_id, employee_code, full_name)
 VALUES
   ('00000000-0000-0000-0000-000000000030','00000000-0000-0000-0000-000000000001','A001','Dr. Kavitha Mohan'),
@@ -81,12 +74,17 @@ ON CONFLICT (employee_code) DO NOTHING;
 -- SURGERY TYPES
 -- ─────────────────────────────────────────────────────────────────────
 INSERT INTO surgery_types (surgery_type_id, department_id, code, name, package_name)
-VALUES
-  ('00000000-0000-0000-0000-000000000050','00000000-0000-0000-0000-000000000010','APPY','Appendicectomy','General Package A'),
-  ('00000000-0000-0000-0000-000000000051','00000000-0000-0000-0000-000000000010','CHOLE','Laparoscopic Cholecystectomy','General Package B'),
-  ('00000000-0000-0000-0000-000000000052','00000000-0000-0000-0000-000000000011','TKR','Total Knee Replacement','Ortho Package A'),
-  ('00000000-0000-0000-0000-000000000053','00000000-0000-0000-0000-000000000012','CABG','Coronary Artery Bypass Graft','Cardio Package A'),
-  ('00000000-0000-0000-0000-000000000054','00000000-0000-0000-0000-000000000010','HERN','Hernia Repair','General Package C')
+SELECT v.surgery_type_id, d.department_id, v.code, v.name, v.package_name
+FROM (VALUES
+  ('00000000-0000-0000-0000-000000000050'::uuid,'GEN','APPY','Appendicectomy','General Package A'),
+  ('00000000-0000-0000-0000-000000000051'::uuid,'GEN','CHOLE','Laparoscopic Cholecystectomy','General Package B'),
+  ('00000000-0000-0000-0000-000000000052'::uuid,'ORTHO','TKR','Total Knee Replacement','Ortho Package A'),
+  ('00000000-0000-0000-0000-000000000053'::uuid,'CARDIO','CABG','Coronary Artery Bypass Graft','Cardio Package A'),
+  ('00000000-0000-0000-0000-000000000054'::uuid,'GEN','HERN','Hernia Repair','General Package C')
+) AS v(surgery_type_id, department_code, code, name, package_name)
+JOIN departments d
+  ON d.department_code = v.department_code
+ AND d.branch_id = '00000000-0000-0000-0000-000000000001'::uuid
 ON CONFLICT (code) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────
@@ -114,7 +112,7 @@ VALUES
   ('00000000-0000-0000-0000-000000000075','00000000-0000-0000-0000-000000000001','MR006','Anitha P','1978-04-30','FEMALE',FALSE),
   ('00000000-0000-0000-0000-000000000076','00000000-0000-0000-0000-000000000001','MR007','Suresh Kumar','1963-08-22','MALE',FALSE),
   ('00000000-0000-0000-0000-000000000077','00000000-0000-0000-0000-000000000001','MR008','Parvathi N','1995-01-15','FEMALE',FALSE)
-ON CONFLICT (branch_id, mr_number) DO NOTHING;
+ON CONFLICT (branch_id, mr_number) WHERE (is_active = true) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- CONSUMABLE ITEMS
@@ -150,9 +148,9 @@ DO $$
 DECLARE
   -- Re-usable IDs
   bid   UUID := '00000000-0000-0000-0000-000000000001';  -- branch MAIN
-  dep1  UUID := '00000000-0000-0000-0000-000000000010';  -- General Surgery
-  dep2  UUID := '00000000-0000-0000-0000-000000000011';  -- Orthopaedics
-  dep3  UUID := '00000000-0000-0000-0000-000000000012';  -- Cardiology
+  dep1  UUID;
+  dep2  UUID;
+  dep3  UUID;
   surg1 UUID := '00000000-0000-0000-0000-000000000020';  -- Dr. Arun Kumar
   surg2 UUID := '00000000-0000-0000-0000-000000000021';  -- Dr. Priya Nair
   surg3 UUID := '00000000-0000-0000-0000-000000000022';  -- Dr. Ramesh Babu
@@ -177,6 +175,13 @@ DECLARE
 
   sid   UUID;
 BEGIN
+  SELECT department_id INTO dep1 FROM departments WHERE branch_id=bid AND department_code='GEN' LIMIT 1;
+  SELECT department_id INTO dep2 FROM departments WHERE branch_id=bid AND department_code='ORTHO' LIMIT 1;
+  SELECT department_id INTO dep3 FROM departments WHERE branch_id=bid AND department_code='CARDIO' LIMIT 1;
+
+  IF dep1 IS NULL OR dep2 IS NULL OR dep3 IS NULL THEN
+    RAISE EXCEPTION 'Required seed departments are missing (GEN, ORTHO, CARDIO)';
+  END IF;
 
   -- Surgery 1: Appendicectomy by Dr. Arun Kumar, 3 months ago
   IF NOT EXISTS (SELECT 1 FROM surgeries WHERE surgery_id = '11000000-0000-0000-0000-000000000001') THEN

@@ -89,6 +89,11 @@ export function SurgeryListPage() {
         cell: (info) => formatDate(info.getValue()) || '—',
       },
       {
+        header: 'Surgery No.',
+        accessorKey: 'surgeryNumber',
+        cell: (info) => info.getValue() || '—',
+      },
+      {
         header: 'Patient',
         accessorFn: (row) => row.patient?.fullName || '—',
       },

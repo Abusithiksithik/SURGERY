@@ -42,6 +42,10 @@ function createMasterService(tableName, idColumn, searchColumns = ['full_name'])
       params.push(queryParams.branchId);
       conditions.push(`branch_id = $${params.length}`);
     }
+    if (tableName === 'staff' && queryParams.staffType) {
+      params.push(queryParams.staffType);
+      conditions.push(`staff_type = $${params.length}`);
+    }
     if (queryParams.isActive !== undefined) {
       params.push(queryParams.isActive === 'true' || queryParams.isActive === true);
       conditions.push(`is_active = $${params.length}`);
@@ -243,13 +247,20 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   await getUserById(id);
-  const allowed = ['full_name','role','is_active','branch_id','email'];
   const sets = []; const vals = [];
   if (data.fullName  !== undefined) { sets.push(`full_name = $${sets.length+1}`);  vals.push(data.fullName); }
   if (data.role      !== undefined) { sets.push(`role = $${sets.length+1}`);        vals.push(data.role); }
   if (data.isActive  !== undefined) { sets.push(`is_active = $${sets.length+1}`);   vals.push(data.isActive); }
   if (data.branchId  !== undefined) { sets.push(`branch_id = $${sets.length+1}`);   vals.push(data.branchId); }
   if (data.email     !== undefined) { sets.push(`email = $${sets.length+1}`);       vals.push(data.email); }
+  if (typeof data.password === 'string' && data.password.length > 0) {
+    if (data.password.length < 6 || data.password.length > 100) throw ApiError.validation('Password must be between 6 and 100 characters');
+    const bcrypt = require('bcryptjs');
+    const { env } = require('../../config/env');
+    const passwordHash = await bcrypt.hash(data.password, env.BCRYPT_SALT_ROUNDS || 10);
+    sets.push(`password_hash = $${sets.length+1}`);
+    vals.push(passwordHash);
+  }
   if (sets.length === 0) return getUserById(id);
   const { rows } = await query(
     `UPDATE users SET ${sets.join(', ')}, updated_at = now() WHERE user_id = $${sets.length+1}

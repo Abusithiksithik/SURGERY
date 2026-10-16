@@ -1,14 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import * as mastersApi from '@/api/masters.api';
+import type { Staff } from '@/api/types';
 
-// Reference data changes rarely, so a longer staleTime avoids refetching
-// the same surgeon/surgery-type lists on every screen navigation.
 const REFERENCE_STALE_TIME = 5 * 60 * 1000;
+const staffList = (staffType: Staff['staffType'], params: { branchId?: string } = {}) =>
+  mastersApi.listStaff({ ...params, staffType, limit: 500, isActive: true });
 
 export function useSurgeons(params: { branchId?: string } = {}) {
   return useQuery({
     queryKey: ['masters', 'surgeons', params],
-    queryFn: () => mastersApi.listSurgeons({ ...params, limit: 500, isActive: true }),
+    queryFn: async () => (await staffList('Surgeon', params)).filter(s=>!!s.legacySurgeonId).map(s=>({
+      surgeonId:s.legacySurgeonId!,branchId:s.branchId||'',fullName:s.name,employeeCode:s.employeeCode,
+      specialization:s.specialty,isActive:s.isActive,
+    })),
     staleTime: REFERENCE_STALE_TIME,
   });
 }
@@ -24,7 +28,9 @@ export function useSurgeryTypes() {
 export function useAnaesthetists(params: { branchId?: string } = {}) {
   return useQuery({
     queryKey: ['masters', 'anaesthetists', params],
-    queryFn: () => mastersApi.listAnaesthetists({ ...params, limit: 500, isActive: true }),
+    queryFn: async () => (await staffList('Anaesthetist', params)).filter(s=>!!s.legacyAnaesthetistId).map(s=>({
+      anaesthetistId:s.legacyAnaesthetistId!,branchId:s.branchId||'',fullName:s.name,employeeCode:s.employeeCode,isActive:s.isActive,
+    })),
     staleTime: REFERENCE_STALE_TIME,
   });
 }
@@ -32,7 +38,9 @@ export function useAnaesthetists(params: { branchId?: string } = {}) {
 export function useAssistants(params: { branchId?: string } = {}) {
   return useQuery({
     queryKey: ['masters', 'assistants', params],
-    queryFn: () => mastersApi.listAssistants({ ...params, limit: 500, isActive: true }),
+    queryFn: async () => (await staffList('Assistant', params)).filter(s=>!!s.legacyAssistantId).map(s=>({
+      assistantId:s.legacyAssistantId!,branchId:s.branchId||'',fullName:s.name,employeeCode:s.employeeCode,roleTitle:s.specialty,isActive:s.isActive,
+    })),
     staleTime: REFERENCE_STALE_TIME,
   });
 }

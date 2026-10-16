@@ -76,6 +76,20 @@ const createSurgerySchema = Joi.object({
 
   comments: Joi.string().max(5000).optional().allow('', null),
 
+  asaGrade: Joi.number().integer().min(1).max(6).optional().allow(null),
+  asaEmergency: Joi.boolean().optional(),
+  comorbidities: Joi.string().max(5000).optional().allow('', null),
+  pacDate: Joi.date().iso().optional().allow(null),
+  pacByStaffId: Joi.string().uuid().optional().allow(null),
+  fitnessRemark: Joi.string().max(5000).optional().allow('', null),
+  specialPrecautions: Joi.string().max(5000).optional().allow('', null),
+  plannedOtType: Joi.string().valid('Major','Minor','Cath Lab').optional().allow(null),
+  payerType: Joi.string().valid('SELF','INSURANCE','SCHEME','CORPORATE').optional(),
+  payerName: Joi.string().max(300).optional().allow('', null),
+  payerReference: Joi.string().max(300).optional().allow('', null),
+  preauthAmount: Joi.number().min(0).precision(2).optional().allow(null),
+  hisUhid: Joi.string().max(100).optional().allow('', null),
+
   assistants: Joi.array().items(assistantLineSchema).default([]),
 });
 
@@ -121,6 +135,20 @@ const updateSurgerySchema = Joi.object({
   quotedPrice: Joi.number().min(0).optional(),
 
   comments: Joi.string().max(5000).optional().allow('', null),
+
+  asaGrade: Joi.number().integer().min(1).max(6).optional().allow(null),
+  asaEmergency: Joi.boolean().optional(),
+  comorbidities: Joi.string().max(5000).optional().allow('', null),
+  pacDate: Joi.date().iso().optional().allow(null),
+  pacByStaffId: Joi.string().uuid().optional().allow(null),
+  fitnessRemark: Joi.string().max(5000).optional().allow('', null),
+  specialPrecautions: Joi.string().max(5000).optional().allow('', null),
+  plannedOtType: Joi.string().valid('Major','Minor','Cath Lab').optional().allow(null),
+  payerType: Joi.string().valid('SELF','INSURANCE','SCHEME','CORPORATE').optional(),
+  payerName: Joi.string().max(300).optional().allow('', null),
+  payerReference: Joi.string().max(300).optional().allow('', null),
+  preauthAmount: Joi.number().min(0).precision(2).optional().allow(null),
+  hisUhid: Joi.string().max(100).optional().allow('', null),
 
   // If a budget field is being changed away from what the engine
   // recommended, the caller must say why (enforced in the service layer).

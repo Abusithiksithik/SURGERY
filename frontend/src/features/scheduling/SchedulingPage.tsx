@@ -455,8 +455,13 @@ function DocumentationTab({ surgeryId }: { surgeryId: string }) {
           <Grid item xs={12} sm={5}>
             <TextField
               label="Notes (optional)" size="small" fullWidth
+              name="surgery-document-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              // Prevent browser password-manager/contact autofill from inserting saved
+              // account values (e.g. management email) into this free-text field.
+              autoComplete="off"
+              inputProps={{ autoComplete: 'new-password', 'data-form-type': 'other' }}
             />
           </Grid>
           <Grid item xs={12} sm={4}>

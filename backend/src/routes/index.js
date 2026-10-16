@@ -16,6 +16,9 @@ router.use('/alerts', require('../modules/alerts/alerts.routes'));
 router.use('/reports', require('../modules/reports/reports.routes'));
 router.use('/preop', require('../modules/preop/preop.routes'));
 router.use('/documents', require('../modules/documents/documents.routes'));
+router.use('/actuals', require('../modules/actuals/actuals.routes'));
+router.use('/audit', require('../modules/audit/audit.routes'));
+router.use('/permissions', require('../modules/permissions/permissions.routes'));
 
 router.get('/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });

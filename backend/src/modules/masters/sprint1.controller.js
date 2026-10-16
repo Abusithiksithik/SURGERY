@@ -1,0 +1,12 @@
+'use strict';
+const asyncHandler=require('../../utils/asyncHandler'); const ApiResponse=require('../../utils/ApiResponse'); const service=require('./sprint1.service');
+exports.list=(name)=>asyncHandler(async(req,res)=>new ApiResponse(200,await service.list(name,req.query),`${name} list`).send(res));
+exports.create=(name)=>asyncHandler(async(req,res)=>new ApiResponse(201,await service.create(name,req.body,req.user.userId),`${name} created`).send(res));
+exports.update=(name)=>asyncHandler(async(req,res)=>new ApiResponse(200,await service.update(name,req.params.id,req.body),`${name} updated`).send(res));
+exports.deactivate=(name,active=false)=>asyncHandler(async(req,res)=>new ApiResponse(200,await service.deactivate(name,req.params.id,active),active?'Record activated':'Record deactivated').send(res));
+exports.roomOperations=asyncHandler(async(req,res)=>new ApiResponse(200,await service.roomOperations(req.params.id,req.body),'OT room updated').send(res));
+exports.listSetItems=asyncHandler(async(req,res)=>new ApiResponse(200,await service.listSetItems(req.params.id),'Instrument set items').send(res));
+exports.replaceSetItems=asyncHandler(async(req,res)=>new ApiResponse(200,await service.replaceSetItems(req.params.id,req.body.items,req.user.userId),'Instrument set composition saved').send(res));
+exports.setRequirement=asyncHandler(async(req,res)=>new ApiResponse(200,await service.setRequirement(),'Instrument requirements').send(res));
+exports.getPreferenceCard=asyncHandler(async(req,res)=>new ApiResponse(200,await service.getPreferenceCard(req.params.id),'Procedure preference card').send(res));
+exports.savePreferenceCard=asyncHandler(async(req,res)=>new ApiResponse(200,await service.savePreferenceCard(req.params.id,req.body,req.user.userId),'Procedure preference card saved').send(res));

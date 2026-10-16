@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const REQUIRED_IN_PRODUCTION = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
+const EXAMPLE_JWT_SECRETS = new Set(['dev-secret-change-me', 'dev-refresh-secret-change-me', 'change-me', 'changeme', 'secret', 'your-secret-here']);
 
 const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
@@ -39,11 +40,30 @@ const env = {
 };
 
 function validateEnv() {
-  if (env.NODE_ENV === 'production') {
-    const missing = REQUIRED_IN_PRODUCTION.filter((key) => !process.env[key]);
-    if (missing.length > 0) {
-      throw new Error(`Missing required environment variables in production: ${missing.join(', ')}`);
+  if (env.NODE_ENV !== 'production') return;
+
+  const missing = REQUIRED_IN_PRODUCTION.filter((key) => !String(process.env[key] || '').trim());
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables in production: ${missing.join(', ')}`);
+  }
+
+  for (const key of ['JWT_SECRET', 'JWT_REFRESH_SECRET']) {
+    const value = String(process.env[key] || '');
+    if (value.length < 32) {
+      throw new Error(`${key} must be at least 32 characters in production.`);
     }
+    if (EXAMPLE_JWT_SECRETS.has(value.toLowerCase()) || /^(dev-|example|replace[-_ ]?me|your[-_ ]?)/i.test(value)) {
+      throw new Error(`${key} must not use an example or development secret in production.`);
+    }
+  }
+
+  if (['12345', 'Admin@12345'].includes(String(process.env.ADMIN_PASSWORD || env.ADMIN_PASSWORD)) || /^(change[_ -]?me|replace[_ -]?me|example|your[-_ ]?)/i.test(String(process.env.ADMIN_PASSWORD || env.ADMIN_PASSWORD))) {
+    throw new Error('ADMIN_PASSWORD must be changed from the default password before production startup.');
+  }
+
+  const databaseUrl = String(process.env.DATABASE_URL || '');
+  if (/postgres(?:ql)?:\/\/[^:/]+:(?:12345|change[_ -]?me|replace[_ -]?me)@/i.test(databaseUrl)) {
+    throw new Error('DATABASE_URL uses the known default database password. Configure a rotated database credential.');
   }
 }
 

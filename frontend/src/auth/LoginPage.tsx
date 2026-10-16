@@ -35,7 +35,7 @@ export function LoginPage() {
     try {
       const username = usernameRef.current?.value ?? '';
       const password = passwordRef.current?.value ?? '';
-      await login(username, password);
+      await login(username.trim(), password);
       navigate(from, { replace: true });
     } catch (err) {
       setError(getErrorMessage(err));
