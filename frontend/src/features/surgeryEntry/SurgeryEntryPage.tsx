@@ -36,7 +36,7 @@ const EMPTY: Partial<Surgery> & Record<string, unknown> = {
   patientId: '', surgeonId: '', surgeryTypeId: '', departmentId: '',
   anaesthetistId: '', ipOp: 'OP', admissionNumber: '',
   diagnosis: '', plannedProcedure: '', sideSite: '', clinicalNotes: '',
-  planDate: '', scheduledDate: '', surgeryDate: '',
+  planDate: '', scheduledDate: '', surgeryDate: '', technicianType: '',
 };
 
 export function SurgeryEntryPage() {
@@ -83,6 +83,7 @@ export function SurgeryEntryPage() {
         planDate: existing.planDate ?? '',
         scheduledDate: existing.scheduledDate ?? '',
         surgeryDate: existing.surgeryDate ?? '',
+        technicianType: existing.technicianType ?? '',
       });
     }
   }, [existing]);
@@ -139,6 +140,7 @@ export function SurgeryEntryPage() {
       plannedProcedure: form.plannedProcedure || undefined,
       sideSite: form.sideSite || undefined,
       clinicalNotes: form.clinicalNotes || undefined,
+      technicianType: form.technicianType || undefined,
       planDate: form.planDate || undefined,
       scheduledDate: form.scheduledDate || undefined,
       surgeryDate: form.surgeryDate || undefined,
@@ -278,6 +280,20 @@ export function SurgeryEntryPage() {
           </Grid>
         )}
 
+        {/* Technician type — full-width row directly below IP / OP */}
+        <Grid item xs={12}>
+          <TextField
+            label="Technician" select fullWidth size="small"
+            value={form.technicianType ?? ''}
+            onChange={(e) => set('technicianType', e.target.value)}
+            disabled={isLocked || !canEdit}
+          >
+            <MenuItem value="">— Select Technician Type —</MenuItem>
+            <MenuItem value="IN_HOUSE">In-house</MenuItem>
+            <MenuItem value="OUTSOURCED">Outsourced</MenuItem>
+          </TextField>
+        </Grid>
+
         <Grid item xs={12}><Divider /></Grid>
 
         {/* Clinical */}
@@ -348,6 +364,7 @@ export function SurgeryEntryPage() {
             value={form.clinicalNotes ?? ''} onChange={(e) => set('clinicalNotes', e.target.value)}
             disabled={isLocked || !canEdit} />
         </Grid>
+
 
         <Grid item xs={12}><Divider /></Grid>
 

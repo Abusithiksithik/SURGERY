@@ -131,7 +131,7 @@ export function SurgeryBudgetPage() {
     patientAgeYears: '', patientGender: 'UNKNOWN',
     surgeryDate: '',
     ipOp: 'OP', admissionNumber: '',
-    diagnosis: '', plannedProcedure: '', sideSite: '', clinicalNotes: '',
+    diagnosis: '', plannedProcedure: '', sideSite: '', clinicalNotes: '', technicianType: '',
     comments: '',
     asaGrade: '', asaEmergency: false, comorbidities: '', pacDate: '', pacByStaffId: '',
     fitnessRemark: '', specialPrecautions: '', plannedOtType: '', payerType: 'SELF', payerName: '', payerReference: '', preauthAmount: '', hisUhid: '',
@@ -188,6 +188,7 @@ export function SurgeryBudgetPage() {
         surgeryDate: s.surgeryDate?.slice(0, 10) || '',
         ipOp: s.ipOp || 'OP',
         admissionNumber: s.admissionNumber || '',
+        technicianType: s.technicianType || '',
         diagnosis: s.diagnosis || '',
         plannedProcedure: s.plannedProcedure || '',
         sideSite: s.sideSite || '',
@@ -540,6 +541,17 @@ export function SurgeryBudgetPage() {
                   </TextField>
                 </Grid>
 
+                {/* Technician Type — full-width row directly below IP / OP */}
+                <Grid item xs={12}>
+                  <TextField select label="Technician" fullWidth value={form.technicianType || ''}
+                    onChange={(e) => setForm((f) => ({ ...f, technicianType: e.target.value }))}
+                    disabled={isLocked}>
+                    <MenuItem value="">— Select Technician Type —</MenuItem>
+                    <MenuItem value="IN_HOUSE">In-house</MenuItem>
+                    <MenuItem value="OUTSOURCED">Outsourced</MenuItem>
+                  </TextField>
+                </Grid>
+
                 {/* Diagnosis / Clinical Notes */}
                 <Grid item xs={12}>
                   <TextField label="Diagnosis / Clinical Notes" fullWidth multiline rows={2}
@@ -823,6 +835,7 @@ function buildPayload(form: Record<string, any>, overrideReasons: Record<string,
     patientGender: form.patientGender,
     surgeryDate: form.surgeryDate || undefined,
     ipOp: form.ipOp || 'OP',
+    technicianType: form.technicianType || undefined,
     admissionNumber: form.admissionNumber || undefined,
     diagnosis: form.diagnosis || undefined,
     plannedProcedure: form.plannedProcedure || undefined,

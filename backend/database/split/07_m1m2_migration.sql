@@ -92,6 +92,13 @@ DO $$ BEGIN
 END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='surgeries' AND column_name='technician_type') THEN
+    ALTER TABLE surgeries ADD COLUMN technician_type VARCHAR(20)
+      CHECK (technician_type IN ('IN_HOUSE', 'OUTSOURCED'));
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                  WHERE table_name='surgeries' AND column_name='plan_date') THEN
     ALTER TABLE surgeries ADD COLUMN plan_date DATE;
   END IF;

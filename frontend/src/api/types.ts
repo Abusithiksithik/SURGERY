@@ -236,6 +236,7 @@ export interface Surgery {
   plannedProcedure?: string | null;
   sideSite?: string | null;
   clinicalNotes?: string | null;
+  technicianType?: 'IN_HOUSE' | 'OUTSOURCED' | null;
   planDate?: string | null;
   cancelReason?: string | null;
   comments?: string | null;

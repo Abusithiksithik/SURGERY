@@ -343,7 +343,7 @@ async function create(data, userId) {
     isOutlier: 'is_outlier', outlierReason: 'outlier_reason',
     ipOp: 'ip_op', admissionNumber: 'admission_number',
     diagnosis: 'diagnosis', plannedProcedure: 'planned_procedure',
-    sideSite: 'side_site', clinicalNotes: 'clinical_notes',
+    sideSite: 'side_site', clinicalNotes: 'clinical_notes', technicianType: 'technician_type',
     planDate: 'plan_date', cancelReason: 'cancel_reason',
     asaGrade: 'asa_grade', asaEmergency: 'asa_emergency', comorbidities: 'comorbidities',
     pacDate: 'pac_date', pacByStaffId: 'pac_by_staff_id', fitnessRemark: 'fitness_remark',

@@ -63,6 +63,7 @@ const createSurgerySchema = Joi.object({
   plannedProcedure: Joi.string().max(500).optional().allow('', null),
   sideSite: Joi.string().max(100).optional().allow('', null),
   clinicalNotes: Joi.string().max(2000).optional().allow('', null),
+  technicianType: Joi.string().valid('IN_HOUSE', 'OUTSOURCED').optional().allow('', null),
 
   budgetSurgeonFee: Joi.number().min(0).default(0),
   budgetAssistantCost: Joi.number().min(0).default(0),
@@ -115,6 +116,7 @@ const updateSurgerySchema = Joi.object({
   plannedProcedure: Joi.string().max(500).optional().allow('', null),
   sideSite: Joi.string().max(100).optional().allow('', null),
   clinicalNotes: Joi.string().max(2000).optional().allow('', null),
+  technicianType: Joi.string().valid('IN_HOUSE', 'OUTSOURCED').optional().allow('', null),
 
   budgetSurgeonFee: Joi.number().min(0).optional(),
   budgetAssistantCost: Joi.number().min(0).optional(),
