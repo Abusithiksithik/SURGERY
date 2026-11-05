@@ -71,7 +71,7 @@ async function login({ username, password }) {
     throw ApiError.unauthorized('Invalid username or password');
   }
 
-  await query('UPDATE users SET last_login_at = now() WHERE user_id = $1', [row.user_id]);
+  await query('UPDATE users SET last_login_at = now() WHERE user_id = $1', [row.user_id], { userId: row.user_id });
 
   const user = toUser(row);
   return {

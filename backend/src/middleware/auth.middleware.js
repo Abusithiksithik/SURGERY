@@ -3,6 +3,7 @@
 const jwt = require('jsonwebtoken');
 const { env } = require('../config/env');
 const { queryOne } = require('../config/db');
+const { runWithAuditUser } = require('../config/auditContext');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -41,7 +42,8 @@ const authenticate = asyncHandler(async (req, res, next) => {
     branchId: user.branch_id,
   };
 
-  next();
+  // Keep the authenticated actor attached to every async operation started by downstream handlers.
+  runWithAuditUser(req.user.userId, () => next());
 });
 
 const authenticateOptional = asyncHandler(async (req, res, next) => {

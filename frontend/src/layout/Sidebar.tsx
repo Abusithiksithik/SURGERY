@@ -39,12 +39,12 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </Box>
       </Stack>
 
-      <List sx={{ flex: 1, px: 1.5, py: 1 }}>
+      <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain', scrollbarWidth: 'thin', '&::-webkit-scrollbar': { width: 6 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,0.35)', borderRadius: 8 }, px: 1.5, py: 1 }}>
         {visibleItems.map((item, idx) => {
           // Use exact match for items that are prefixes of other routes (e.g. /scheduling)
           // to prevent OT Scheduling from staying "active" when on /preop-checklist,
           // and to prevent Pre-Op Checklist from ever matching /scheduling/* sub-paths.
-          const isExactMatch = item.path === '/scheduling' || item.path === '/preop-checklist';
+          const isExactMatch = item.path === '/scheduling' || item.path === '/preop-checklist' || item.path === '/ot-store';
           const active = isExactMatch
             ? location.pathname === item.path
             : location.pathname === item.path || location.pathname.startsWith(item.path + '/');

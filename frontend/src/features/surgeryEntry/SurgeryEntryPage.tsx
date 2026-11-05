@@ -36,7 +36,7 @@ const EMPTY: Partial<Surgery> & Record<string, unknown> = {
   patientId: '', surgeonId: '', surgeryTypeId: '', departmentId: '',
   anaesthetistId: '', ipOp: 'OP', admissionNumber: '',
   diagnosis: '', plannedProcedure: '', sideSite: '', clinicalNotes: '',
-  planDate: '', scheduledDate: '', surgeryDate: '', technicianType: '',
+  planDate: '', scheduledDate: '', surgeryDate: '', technicianType: null,
 };
 
 export function SurgeryEntryPage() {
@@ -83,7 +83,7 @@ export function SurgeryEntryPage() {
         planDate: existing.planDate ?? '',
         scheduledDate: existing.scheduledDate ?? '',
         surgeryDate: existing.surgeryDate ?? '',
-        technicianType: existing.technicianType ?? '',
+        technicianType: existing.technicianType ?? null,
       });
     }
   }, [existing]);
@@ -285,7 +285,7 @@ export function SurgeryEntryPage() {
           <TextField
             label="Technician" select fullWidth size="small"
             value={form.technicianType ?? ''}
-            onChange={(e) => set('technicianType', e.target.value)}
+            onChange={(e) => set('technicianType', e.target.value || null)}
             disabled={isLocked || !canEdit}
           >
             <MenuItem value="">— Select Technician Type —</MenuItem>

@@ -18,12 +18,16 @@ async function list(name, params={}) {
  if(name==='items' && params.isBillable!==undefined){values.push(params.isBillable==='true'||params.isBillable===true);where.push(`is_billable=$${values.length}`)}
  if(params.search){values.push(`%${String(params.search).slice(0,150)}%`);const i=values.length;where.push(`(${r.search.map(c=>`${c}::text ILIKE $${i}`).join(' OR ')})`)}
  const clause=where.length?`WHERE ${where.join(' AND ')}`:'';
- const rows=await queryRows(`SELECT * FROM ${r.table} ${clause} ORDER BY created_at DESC NULLS LAST LIMIT 500`,values);
+ // Item master installations may predate the timestamp columns in migration 22.
+ // Use a stable item-name ordering so listing remains readable even before the
+ // compatibility migration is applied. Other masters retain newest-first order.
+ const orderBy = name === 'items' ? 'item_name ASC, item_code ASC' : 'created_at DESC NULLS LAST';
+ const rows=await queryRows(`SELECT * FROM ${r.table} ${clause} ORDER BY ${orderBy} LIMIT 500`,values);
  return rows.map(camelRow);
 }
 async function create(name,data,userId) {
  const r=resource(name); const safe={}; for(const f of r.fields){if(data[f]!==undefined)safe[f]=data[f]}
- if(name==='items') { safe.item_name=String(safe.item_name||'').trim().replace(/\s+/g,' '); if(!safe.item_name)throw ApiError.badRequest('Item name is required.'); const duplicate=await queryOne("SELECT item_id FROM consumable_items WHERE lower(regexp_replace(trim(item_name),'[[:space:]]+',' ','g'))=$1",[safe.item_name.toLowerCase()]); if(duplicate)throw ApiError.conflict('An item with the same normalized name already exists.'); }
+ if(name==='items') { safe.item_name=String(safe.item_name||'').trim().replace(/\s+/g,' '); if(!safe.item_name)throw ApiError.badRequest('Item name is required.'); if(!String(safe.item_code||'').trim())throw ApiError.badRequest('Item code is required.'); if(!String(safe.uom||'').trim())throw ApiError.badRequest('Base unit of measure is required for OT Store.'); safe.item_code=String(safe.item_code).trim().toUpperCase(); const duplicateCode=await queryOne('SELECT item_id FROM consumable_items WHERE upper(trim(item_code))=$1',[safe.item_code]); if(duplicateCode)throw ApiError.conflict('An item with this item code already exists.'); safe.uom=String(safe.uom).trim(); safe.unit=safe.uom; if(safe.purchase_rate!==undefined && safe.purchase_rate!==null)safe.standard_cost=safe.purchase_rate; const duplicate=await queryOne("SELECT item_id FROM consumable_items WHERE lower(regexp_replace(trim(item_name),'[[:space:]]+',' ','g'))=$1",[safe.item_name.toLowerCase()]); if(duplicate)throw ApiError.conflict('An item with the same normalized name already exists.'); }
  if(name==='vendors') safe.name=String(safe.name||'').trim();
  if(name==='instruments') safe.name=String(safe.name||'').trim();
  if(name==='sets') safe.name=String(safe.name||'').trim();
@@ -33,17 +37,17 @@ async function create(name,data,userId) {
  const {rows}=await query(`INSERT INTO ${r.table}(${cols}${name==='items'?',created_by':',created_by'}) VALUES(${params.map((_,i)=>`$${i+1}`).join(', ')},$${params.length+1}) RETURNING *`,[...params,userId||null]);
  return camelRow(rows[0]);
 }
-async function update(name,id,data) {
+async function update(name,id,data,userId) {
  const r=resource(name); const safe={}; for(const f of r.fields){if(data[f]!==undefined)safe[f]=data[f]}
- if(name==='items' && safe.item_name!==undefined){safe.item_name=String(safe.item_name).trim().replace(/\s+/g,' ');const duplicate=await queryOne("SELECT item_id FROM consumable_items WHERE lower(regexp_replace(trim(item_name),'[[:space:]]+',' ','g'))=$1 AND item_id<>$2",[safe.item_name.toLowerCase(),id]);if(duplicate)throw ApiError.conflict('An item with the same normalized name already exists.');}
+ if(name==='items'){ if(safe.item_name!==undefined)safe.item_name=String(safe.item_name).trim().replace(/\s+/g,' '); if(safe.item_code!==undefined)safe.item_code=String(safe.item_code).trim().toUpperCase(); if(safe.uom!==undefined){safe.uom=String(safe.uom||'').trim();if(!safe.uom)throw ApiError.badRequest('Base unit of measure cannot be empty.');safe.unit=safe.uom;} if(safe.purchase_rate!==undefined)safe.standard_cost=safe.purchase_rate; if(safe.uom===undefined && safe.unit!==undefined)safe.uom=safe.unit; if(safe.purchase_rate===undefined && safe.standard_cost!==undefined)safe.purchase_rate=safe.standard_cost; if(safe.item_code!==undefined){const duplicateCode=await queryOne('SELECT item_id FROM consumable_items WHERE upper(trim(item_code))=$1 AND item_id<>$2',[safe.item_code,id]);if(duplicateCode)throw ApiError.conflict('An item with this item code already exists.');} if(safe.item_name!==undefined){const duplicate=await queryOne("SELECT item_id FROM consumable_items WHERE lower(regexp_replace(trim(item_name),'[[:space:]]+',' ','g'))=$1 AND item_id<>$2",[safe.item_name.toLowerCase(),id]);if(duplicate)throw ApiError.conflict('An item with the same normalized name already exists.');} }
  if(!Object.keys(safe).length)throw ApiError.badRequest('No valid fields supplied.');
  const keys=Object.keys(safe); const vals=keys.map(k=>safe[k]);
- const {rows}=await query(`UPDATE ${r.table} SET ${keys.map((k,i)=>`${k}=$${i+1}`).join(', ')},updated_at=now() WHERE ${r.id}=$${keys.length+1} RETURNING *`,[...vals,id]);
+ const {rows}=await query(`UPDATE ${r.table} SET ${keys.map((k,i)=>`${k}=$${i+1}`).join(', ')},updated_at=now() WHERE ${r.id}=$${keys.length+1} RETURNING *`,[...vals,id],{userId});
  if(!rows[0])throw ApiError.notFound('Record not found.'); return camelRow(rows[0]);
 }
-async function deactivate(name,id,active=false) { const r=resource(name); const {rows}=await query(`UPDATE ${r.table} SET is_active=$1,updated_at=now() WHERE ${r.id}=$2 RETURNING *`,[active,id]); if(!rows[0])throw ApiError.notFound('Record not found.'); return camelRow(rows[0]); }
-async function roomOperations(id,data) {
- const {rows}=await query(`UPDATE ot_rooms SET turnaround_min=COALESCE($1,turnaround_min),ot_status=COALESCE($2,ot_status),location=COALESCE($3,location),updated_at=now() WHERE ot_room_id=$4 RETURNING *`,[data.turnaroundMin??null,data.otStatus??null,data.location??null,id]);
+async function deactivate(name,id,active=false,userId) { const r=resource(name); const {rows}=await query(`UPDATE ${r.table} SET is_active=$1,updated_at=now() WHERE ${r.id}=$2 RETURNING *`,[active,id],{userId}); if(!rows[0])throw ApiError.notFound('Record not found.'); return camelRow(rows[0]); }
+async function roomOperations(id,data,userId) {
+ const {rows}=await query(`UPDATE ot_rooms SET turnaround_min=COALESCE($1,turnaround_min),ot_status=COALESCE($2,ot_status),location=COALESCE($3,location),updated_at=now() WHERE ot_room_id=$4 RETURNING *`,[data.turnaroundMin??null,data.otStatus??null,data.location??null,id],{userId});
  if(!rows[0])throw ApiError.notFound('OT room not found.'); return camelRow(rows[0]);
 }
 async function listSetItems(setId) {

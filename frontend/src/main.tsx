@@ -8,6 +8,14 @@ import App from './App';
 import { ThemeModeProvider } from './theme/ThemeModeContext';
 import { AuthProvider } from './auth/AuthContext';
 
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+      console.error('Service worker registration failed:', error);
+    });
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

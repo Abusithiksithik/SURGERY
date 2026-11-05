@@ -92,7 +92,7 @@ function createMasterService(tableName, idColumn, searchColumns = ['full_name'])
     return toMaster(row);
   }
 
-  async function create(data) {
+  async function create(data, userId) {
     const keys = Object.keys(data).filter((k) => data[k] !== undefined);
     if (keys.length === 0) throw ApiError.badRequest('No data provided');
 
@@ -102,12 +102,13 @@ function createMasterService(tableName, idColumn, searchColumns = ['full_name'])
 
     const { rows } = await query(
       `INSERT INTO ${tableName} (${cols}) VALUES (${placeholders}) RETURNING *`,
-      vals
+      vals,
+      { userId }
     );
     return toMaster(rows[0]);
   }
 
-  async function update(id, data) {
+  async function update(id, data, userId) {
     await getById(id); // 404 guard
 
     const keys = Object.keys(data).filter((k) => data[k] !== undefined);
@@ -121,19 +122,21 @@ function createMasterService(tableName, idColumn, searchColumns = ['full_name'])
           SET ${sets}, updated_at = now()
         WHERE ${idColumn} = $${keys.length + 1}
        RETURNING *`,
-      vals
+      vals,
+      { userId }
     );
     return toMaster(rows[0]);
   }
 
-  async function deactivate(id) {
+  async function deactivate(id, userId) {
     await getById(id); // 404 guard
     const { rows } = await query(
       `UPDATE ${tableName}
           SET is_active = false, updated_at = now()
         WHERE ${idColumn} = $1
        RETURNING *`,
-      [id]
+      [id],
+      { userId }
     );
     return toMaster(rows[0]);
   }
@@ -146,11 +149,12 @@ function createMasterService(tableName, idColumn, searchColumns = ['full_name'])
 // ─── Activate helper (re-activate a deactivated record) ──────────────────────
 function createMasterServiceWithActivate(tableName, idColumn, searchColumns = ['full_name']) {
   const base = createMasterService(tableName, idColumn, searchColumns);
-  async function activate(id) {
+  async function activate(id, userId) {
     const { rows } = await query(
       `UPDATE ${tableName} SET is_active = true, updated_at = now()
         WHERE ${idColumn} = $1 RETURNING *`,
-      [id]
+      [id],
+      { userId }
     );
     if (!rows[0]) throw ApiError.notFound('Record not found');
     return toMaster(rows[0]);
@@ -171,13 +175,14 @@ const staff       = createMasterServiceWithActivate('staff',           'staff_id
 
 // Patient soft-delete: mark is_active = false.
 // Does NOT remove surgical records — FK is ON DELETE RESTRICT so linked surgeries are preserved.
-async function deletePatient(id) {
+async function deletePatient(id, userId) {
   const row = await queryOne('SELECT patient_id FROM patients WHERE patient_id = $1', [id]);
   if (!row) throw ApiError.notFound('Patient not found');
   const { rows } = await query(
     `UPDATE patients SET is_active = false, updated_at = now()
       WHERE patient_id = $1 RETURNING *`,
-    [id]
+    [id],
+    { userId }
   );
   return toMaster(rows[0]);
 }
@@ -232,7 +237,7 @@ async function getUserById(id) {
   return toMaster(row);
 }
 
-async function createUser(data) {
+async function createUser(data, userId) {
   const bcrypt = require('bcryptjs');
   const { env } = require('../../config/env');
   if (!data.password) throw ApiError.badRequest('Password is required');
@@ -240,12 +245,13 @@ async function createUser(data) {
   const { rows } = await query(
     `INSERT INTO users (branch_id, username, email, password_hash, full_name, role)
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING user_id, branch_id, username, email, full_name, role, is_active`,
-    [data.branchId||null, data.username, data.email, passwordHash, data.fullName, data.role||'VIEWER']
+    [data.branchId||null, data.username, data.email, passwordHash, data.fullName, data.role||'VIEWER'],
+    { userId }
   );
   return toMaster(rows[0]);
 }
 
-async function updateUser(id, data) {
+async function updateUser(id, data, userId) {
   await getUserById(id);
   const sets = []; const vals = [];
   if (data.fullName  !== undefined) { sets.push(`full_name = $${sets.length+1}`);  vals.push(data.fullName); }
@@ -265,16 +271,18 @@ async function updateUser(id, data) {
   const { rows } = await query(
     `UPDATE users SET ${sets.join(', ')}, updated_at = now() WHERE user_id = $${sets.length+1}
      RETURNING user_id, branch_id, username, email, full_name, role, is_active`,
-    [...vals, id]
+    [...vals, id],
+    { userId }
   );
   return toMaster(rows[0]);
 }
 
-async function deactivateUser(id) {
+async function deactivateUser(id, userId) {
   const { rows } = await query(
     `UPDATE users SET is_active = false, updated_at = now() WHERE user_id = $1
      RETURNING user_id, username, is_active`,
-    [id]
+    [id],
+    { userId }
   );
   if (!rows[0]) throw ApiError.notFound('User not found');
   return toMaster(rows[0]);

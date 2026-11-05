@@ -3,6 +3,7 @@ import { Box, Drawer } from '@mui/material';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { OfflineSyncStatus } from '@/pwa/OfflineSyncStatus';
 
 const DRAWER_WIDTH = 248;
 
@@ -37,6 +38,7 @@ export function AppLayout() {
 
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Topbar onMenuClick={() => setMobileOpen(true)} />
+        <OfflineSyncStatus />
         <Box component="main" sx={{ flex: 1, p: { xs: 2, sm: 3 }, bgcolor: 'background.default' }}>
           <Outlet />
         </Box>

@@ -21,12 +21,18 @@ import { SurgeryDayActualsListPage, SurgeryDayActualsPage } from '@/features/act
 import { PreOpChecklistListPage } from '@/features/actuals/PreOpChecklistListPage';
 import { AuditPage } from '@/features/audit/AuditPage';
 import { PermissionsPage } from '@/features/permissions/PermissionsPage';
+import { StockStorePage } from '@/features/stock/StockStorePage';
+import { CaseConsumptionPage } from '@/features/stock/CaseConsumptionPage';
+import { MobileOtStorePage } from '@/features/stock/MobileOtStorePage';
+import { MobileReceiveStockPage } from '@/features/stock/MobileReceiveStockPage';
 // Module 4 — Pre-Op Checklist is now integrated in SchedulingPage tabs
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/mobile/ot-store" element={<ProtectedRoute permissions={['MOBILE_OT_ACCESS']}><MobileOtStorePage /></ProtectedRoute>} />
+      <Route path="/mobile/ot-store/receive" element={<ProtectedRoute permissions={['MOBILE_OT_ACCESS']}><MobileReceiveStockPage /></ProtectedRoute>} />
 
       <Route
         element={
@@ -64,6 +70,8 @@ export default function App() {
         {/* Missing cross-cutting modules */}
         <Route path="/audit" element={<ProtectedRoute permissions={['VIEW_AUDIT_TRAIL']}><AuditPage /></ProtectedRoute>} />
         <Route path="/permissions" element={<ProtectedRoute permissions={['MANAGE_ROLE_PERMISSIONS']}><PermissionsPage /></ProtectedRoute>} />
+        <Route path="/ot-store" element={<ProtectedRoute permissions={['RECEIVE_STOCK']}><StockStorePage /></ProtectedRoute>} />
+        <Route path="/ot-store/consumption" element={<ProtectedRoute permissions={['ENTER_CASE_USAGE']}><CaseConsumptionPage /></ProtectedRoute>} />
 
         {/* Surgery Entry (list + form) — combined */}
         <Route path="/surgeries" element={<SurgeryListPage />} />

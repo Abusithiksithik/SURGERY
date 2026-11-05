@@ -3,6 +3,7 @@
 const { Pool } = require('pg');
 const { env } = require('./env');
 const logger = require('./logger');
+const { getAuditUserId } = require('./auditContext');
 
 /**
  * Single shared pg Pool instance for the whole process.
@@ -20,9 +21,27 @@ pool.on('error', (err) => {
 });
 
 /** Helper: run a parameterized query and return the full result object. */
-async function query(text, params) {
+async function query(text, params, options = {}) {
   const start = Date.now();
-  const res = await pool.query(text, params);
+  // Explicit actor takes precedence; AsyncLocalStorage remains the fallback.
+  const actorId = options.userId || getAuditUserId();
+  let res;
+  if (actorId) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('app.user_id', $1, true)", [actorId]);
+      res = await client.query(text, params);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else {
+    res = await pool.query(text, params);
+  }
   if (env.NODE_ENV === 'development') {
     logger.debug(`[pg] ${text.slice(0, 80)}... (${Date.now() - start}ms, ${res.rowCount} rows)`);
   }
@@ -49,6 +68,8 @@ async function withTransaction(fn) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const actorId = getAuditUserId();
+    if (actorId) await client.query("SELECT set_config('app.user_id', $1, true)", [actorId]);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;

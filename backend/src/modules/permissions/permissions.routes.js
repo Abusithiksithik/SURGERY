@@ -9,6 +9,8 @@ const roleBody=Joi.object({roleName:Joi.string().valid('ADMIN','MANAGEMENT','FIN
 router.patch('/',authenticate,requirePermission('MANAGE_ROLE_PERMISSIONS'),validate({body:roleBody}),c.update);
 router.patch('/roles',authenticate,requirePermission('MANAGE_ROLE_PERMISSIONS'),validate({body:roleBody}),c.update);
 /*({roleName:Joi.string().valid('ADMIN','MANAGEMENT','FINANCE','OT_COORDINATOR','SURGEON','ANAESTHETIST','OT_NURSE','OT_TECHNICIAN','OT_STORE','VIEWER').required(),permissionId:id,isGranted:Joi.boolean().required()*/
+router.get('/mobile-access',authenticate,requirePermission('MANAGE_ROLE_PERMISSIONS'),validate({query:Joi.object({})}),c.listMobileAccess);
+router.patch('/mobile-access/:userId',authenticate,requirePermission('MANAGE_ROLE_PERMISSIONS'),validate({params:Joi.object({userId:id}),body:Joi.object({enabled:Joi.boolean().required()})}),c.setMobileAccess);
 router.get('/users',authenticate,requirePermission('MANAGE_ROLE_PERMISSIONS'),validate({query:Joi.object({})}),c.listUsers);
 router.get('/users/:userId',authenticate,requirePermission('MANAGE_ROLE_PERMISSIONS'),validate({params:Joi.object({userId:id})}),c.getUser);
 router.patch('/users/:userId',authenticate,requirePermission('MANAGE_ROLE_PERMISSIONS'),validate({params:Joi.object({userId:id}),body:Joi.object({permissionKey:Joi.string().max(100).required(),isGranted:Joi.boolean().required()})}),c.updateUser);

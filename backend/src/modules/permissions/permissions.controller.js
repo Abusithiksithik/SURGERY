@@ -8,3 +8,6 @@ exports.getUser=asyncHandler(async(req,res)=>new ApiResponse(200,await service.g
 exports.updateUser=asyncHandler(async(req,res)=>new ApiResponse(200,await service.setUserPermission(req.params.userId,req.body.permissionKey,req.body.isGranted,req.user.userId),'User permission override saved').send(res));
 
 exports.listUsers=asyncHandler(async(req,res)=>new ApiResponse(200,await service.listUsersForPermissions(),'Users').send(res));
+
+exports.listMobileAccess=asyncHandler(async(req,res)=>new ApiResponse(200,await service.listMobileAccessUsers(),'Mobile OT access users').send(res));
+exports.setMobileAccess=asyncHandler(async(req,res)=>new ApiResponse(200,await service.setMobileAccess(req.params.userId,req.body.enabled,req.user.userId),'Mobile OT access updated').send(res));

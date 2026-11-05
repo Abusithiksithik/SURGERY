@@ -19,6 +19,9 @@ router.use('/documents', require('../modules/documents/documents.routes'));
 router.use('/actuals', require('../modules/actuals/actuals.routes'));
 router.use('/audit', require('../modules/audit/audit.routes'));
 router.use('/permissions', require('../modules/permissions/permissions.routes'));
+router.use('/stock', require('../modules/stock/stockReceiving.routes'));
+router.use('/stock/usage', require('../modules/stock/stockUsage.routes'));
+router.use('/stock', require('../modules/stock/stockInsights.routes'));
 
 router.get('/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });

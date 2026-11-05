@@ -5,7 +5,7 @@ const {spawnSync}=require('node:child_process');
 const path=require('node:path');
 const envFile=path.resolve(__dirname,'../src/config/env.js');
 function validate(overrides={}){
- const base={PATH:process.env.PATH,NODE_ENV:'production',DATABASE_URL:'postgresql://app:rotated-db-password@localhost:5432/hospital',JWT_SECRET:'a'.repeat(64),JWT_REFRESH_SECRET:'b'.repeat(64),ADMIN_PASSWORD:'new-unique-password-2026'};
+ const base={PATH:process.env.PATH,NODE_ENV:'production',DATABASE_URL:'postgresql://app:rotated-db-password@localhost:5432/hospital',JWT_SECRET:'a'.repeat(64),JWT_REFRESH_SECRET:'b'.repeat(64),ADMIN_PASSWORD:'new-unique-password-2026',CORS_ORIGIN:'https://hospital.example.com'};
  const env={...base,...overrides};
  return spawnSync(process.execPath,['-e',`const m=require(${JSON.stringify(envFile)});m.validateEnv();`],{env,encoding:'utf8'});
 }
@@ -16,3 +16,5 @@ test('production rejects default admin password',()=>{const r=validate({ADMIN_PA
 test('production rejects known default database password',()=>{const r=validate({DATABASE_URL:'postgresql://postgres:12345@localhost:5432/hospital'});assert.notEqual(r.status,0);assert.match(r.stderr,/default database password/);});
 
 test('production rejects placeholder admin password',()=>{const r=validate({ADMIN_PASSWORD:'CHANGE_ME_BEFORE_FIRST_START'});assert.notEqual(r.status,0);assert.match(r.stderr,/default password/);});
+
+test('production rejects wildcard CORS access',()=>{const r=validate({CORS_ORIGIN:'*'});assert.notEqual(r.status,0);assert.match(r.stderr,/CORS_ORIGIN must list the approved application origin/);});

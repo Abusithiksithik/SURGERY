@@ -610,7 +610,7 @@ export function AdminConfigPage() {
         Inactive records remain visible in existing surgery entries but are hidden from new entry dropdowns.
       </Alert>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons={true} allowScrollButtonsMobile sx={{ "& .MuiTabs-scrollButtons": { opacity: 1, width: 36 }, "& .MuiTabs-flexContainer": { gap: 0.25 } }}>
           {TABS.map((t, i) => (
             <Tab key={i} label={t.label} icon={t.icon} iconPosition="start" sx={{ minHeight: 48, fontSize: 13 }} />
           ))}

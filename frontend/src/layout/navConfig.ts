@@ -14,6 +14,7 @@ import FactCheckOutlined from '@mui/icons-material/FactCheckOutlined';
 import MonitorHeartOutlined from '@mui/icons-material/MonitorHeartOutlined';
 import SecurityOutlined from '@mui/icons-material/SecurityOutlined';
 import ManageAccountsOutlined from '@mui/icons-material/ManageAccountsOutlined';
+import Inventory2Outlined from '@mui/icons-material/Inventory2Outlined';
 
 export interface NavItem {
   label: string;
@@ -31,6 +32,9 @@ export const navItems: NavItem[] = [
   { label: 'OT Scheduling',  path: '/scheduling', icon: CalendarMonthOutlined,  dividerBefore: false },
   { label: 'Pre-Op Checklist', path: '/preop-checklist', icon: FactCheckOutlined, dividerBefore: false },
   { label: 'Surgery-Day Actuals', path: '/surgery-day-actuals', icon: MonitorHeartOutlined, permission: 'VIEW_SURGERY_ACTUALS', dividerBefore: false },
+
+  { label: 'OT Store', path: '/ot-store', icon: Inventory2Outlined, permission: 'RECEIVE_STOCK', dividerBefore: true },
+  { label: 'Surgery Consumption', path: '/ot-store/consumption', icon: Inventory2Outlined, permission: 'ENTER_CASE_USAGE' },
 
   // ── Existing modules ──────────────────────────────────────────────
   { label: 'Dashboard',                path: '/',                icon: DashboardOutlined,           dividerBefore: true },

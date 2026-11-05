@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const ExcelJS = require('exceljs');
 const { query, queryOne, disconnectPool } = require('../src/config/db');
 
+const HEADER_ROW = 2;
+const FIRST_DATA_ROW = HEADER_ROW + 1;
+
 const REVIEW_TERMS = [
   'Ceftriazone','Feusemide','Frusemide','Dyclofenac','Metaprolol','Veccuronium','Pentazocaine','Sulbactum',
   'Surgical Blade 15Surgeon','PRolene','EPIdural','Romson','Romsons','Spinal Needle 26 Quinke',
@@ -35,11 +38,11 @@ function collectRows(workbook) {
   const columns={brand:findCol('brand line','suture brand line','brand'),size:findCol('size','suture size'),needleMm:findCol('needle mm','needle (mm)','needle diameter mm'),needleCode:findCol('needle code','code'),lengthCm:findCol('length cm','length (cm)'),material:findCol('material'),absorbable:findCol('absorbable')};
   for(let r=2;r<=specWs.rowCount;r++){const row=specWs.getRow(r);const name=normalize(row.getCell(nameCol).text||row.getCell(nameCol).value);if(name){const info={};for(const [key,col] of Object.entries(columns)){if(col>0){const value=row.getCell(col).value;if(value!==null&&value!==undefined&&String(value).trim()!=='')info[key]=key==='absorbable'?/^(true|yes|y|1)$/i.test(String(value)):key==='needleMm'||key==='lengthCm'?Number(value):String(value).trim();}}specs.set(keyOf(name),info);}}
  }
- const rows=[]; const first=ws.getRow(1);
+ const rows=[]; const first=ws.getRow(HEADER_ROW);
  // Workbook snapshot uses category columns on the Masters sheet. Each populated cell below a category header is one master value.
  for(let col=1;col<=ws.columnCount;col++){
   const header=normalize(first.getCell(col).text||first.getCell(col).value); if(!header)continue;
-  for(let r=2;r<=ws.rowCount;r++){
+  for(let r=FIRST_DATA_ROW;r<=ws.rowCount;r++){
    const value=normalize(ws.getRow(r).getCell(col).text||ws.getRow(r).getCell(col).value); if(!value)continue;
    if(['item','item name','name','display name','masters'].includes(keyOf(value)))continue;
    const category=categoryFor(header,value);
@@ -78,4 +81,8 @@ async function main(){
  for(const item of duplicates)await query(`INSERT INTO item_import_log(source_file,source_row,item_name,action,message) VALUES($1,$2,$3,'DUPLICATE','Duplicate in workbook or existing master; skipped')`,[path.basename(full),item.sourceRow,item.normalized]);
  console.log(`\nImport complete: ${inserted} inserted, ${skipped+duplicates.length} skipped. Opening stock was not imported.`);
 }
-main().catch(err=>{console.error(`Item import failed: ${err.message}`);process.exitCode=1;}).finally(async()=>{await disconnectPool().catch(()=>{});});
+if (require.main === module) {
+ main().catch(err=>{console.error(`Item import failed: ${err.message}`);process.exitCode=1;}).finally(async()=>{await disconnectPool().catch(()=>{});});
+}
+
+module.exports = { collectRows, categoryFor, normalize, HEADER_ROW, FIRST_DATA_ROW };

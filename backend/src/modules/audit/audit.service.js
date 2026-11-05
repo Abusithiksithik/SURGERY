@@ -11,7 +11,7 @@ async function list(params={}) {
   if(params.dateTo){vals.push(params.dateTo);where.push(`a.changed_at < ($${vals.length}::date + INTERVAL '1 day')`)}
   const clause=where.length?`WHERE ${where.join(' AND ')}`:'';
   const [{count}]=await queryRows(`SELECT COUNT(*)::int AS count FROM audit_log a ${clause}`,vals);
-  const rows=await queryRows(`SELECT a.*,u.full_name AS changed_by_name FROM audit_log a LEFT JOIN users u ON u.user_id=a.changed_by ${clause} ORDER BY a.changed_at DESC LIMIT $${vals.length+1} OFFSET $${vals.length+2}`,[...vals,take,skip]);
+  const rows=await queryRows(`SELECT a.*,u.full_name AS changed_by_name,u.username AS changed_by_username FROM audit_log a LEFT JOIN users u ON u.user_id=a.changed_by ${clause} ORDER BY a.changed_at DESC LIMIT $${vals.length+1} OFFSET $${vals.length+2}`,[...vals,take,skip]);
   const items=rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key.replace(/_([a-z])/g,(_,c)=>c.toUpperCase()),value])));
   return {items,meta:buildPaginationMeta({page,limit,totalCount:Number(count)})};
 }

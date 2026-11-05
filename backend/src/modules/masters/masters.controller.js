@@ -16,21 +16,21 @@ function buildControllerFor(service, entityName) {
       return new ApiResponse(200, item).send(res);
     }),
     create: asyncHandler(async (req, res) => {
-      const item = await service.create(req.body);
+      const item = await service.create(req.body, req.user.userId);
       return new ApiResponse(201, item, `${entityName} created`).send(res);
     }),
     update: asyncHandler(async (req, res) => {
-      const item = await service.update(req.params.id, req.body);
+      const item = await service.update(req.params.id, req.body, req.user.userId);
       return new ApiResponse(200, item, `${entityName} updated`).send(res);
     }),
     deactivate: asyncHandler(async (req, res) => {
-      await service.deactivate(req.params.id);
+      await service.deactivate(req.params.id, req.user.userId);
       return new ApiResponse(200, null, `${entityName} deactivated`).send(res);
     }),
   };
   if (service.activate) {
     ctrl.activate = asyncHandler(async (req, res) => {
-      const item = await service.activate(req.params.id);
+      const item = await service.activate(req.params.id, req.user.userId);
       return new ApiResponse(200, item, `${entityName} activated`).send(res);
     });
   }
@@ -38,7 +38,7 @@ function buildControllerFor(service, entityName) {
 }
 
 const deletePatient = asyncHandler(async (req, res) => {
-  const result = await services.deletePatient(req.params.id);
+  const result = await services.deletePatient(req.params.id, req.user.userId);
   return new ApiResponse(200, result, 'Patient deactivated').send(res);
 });
 

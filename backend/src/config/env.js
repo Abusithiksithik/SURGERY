@@ -2,7 +2,7 @@
 
 require('dotenv').config();
 
-const REQUIRED_IN_PRODUCTION = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
+const REQUIRED_IN_PRODUCTION = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'CORS_ORIGIN'];
 const EXAMPLE_JWT_SECRETS = new Set(['dev-secret-change-me', 'dev-refresh-secret-change-me', 'change-me', 'changeme', 'secret', 'your-secret-here']);
 
 const env = {
@@ -59,6 +59,11 @@ function validateEnv() {
 
   if (['12345', 'Admin@12345'].includes(String(process.env.ADMIN_PASSWORD || env.ADMIN_PASSWORD)) || /^(change[_ -]?me|replace[_ -]?me|example|your[-_ ]?)/i.test(String(process.env.ADMIN_PASSWORD || env.ADMIN_PASSWORD))) {
     throw new Error('ADMIN_PASSWORD must be changed from the default password before production startup.');
+  }
+
+  const corsOrigin = String(process.env.CORS_ORIGIN || '').trim();
+  if (!corsOrigin || corsOrigin === '*') {
+    throw new Error('CORS_ORIGIN must list the approved application origin(s) in production; wildcard access is not allowed.');
   }
 
   const databaseUrl = String(process.env.DATABASE_URL || '');

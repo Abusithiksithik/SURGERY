@@ -53,6 +53,12 @@ const SCHEMA_FILES = [
   path.join(DB_DIR, 'split', '24_procedure_card.sql'),
   path.join(DB_DIR, 'split', '25_case_condition_payer.sql'),
   path.join(DB_DIR, 'split', '26_surgery_number.sql'),
+  // New tracked migrations 27-30 are discovered by sequence number. Existing
+  // 01-26 bootstrap behavior is intentionally preserved.
+  ...fs.readdirSync(path.join(DB_DIR, 'split'))
+    .filter((name) => /^(2[7-9]|30)_.+\.sql$/.test(name))
+    .sort()
+    .map((name) => path.join(DB_DIR, 'split', name)),
 ];
 
 const SEED_FILE = path.join(DB_DIR, 'split', '06_seed.sql');
@@ -145,9 +151,79 @@ async function initializeDatabase() {
   try {
     for (const filePath of SCHEMA_FILES) {
       const label = path.basename(filePath);
+      const migrationMatch = label.match(/^(2[7-9]|30)_(.+)\.sql$/);
       try {
-        await client.query(readSql(filePath));
-        logger.info(`  âœ“ ${label}`);
+        // Keep legacy migrations 01-26 unchanged. Migrations 27-30 are tracked,
+        // transactional, and skipped after successful application.
+        if (migrationMatch) {
+          await client.query(`
+            CREATE TABLE IF NOT EXISTS app_migration_markers (
+              marker_key VARCHAR(120) PRIMARY KEY,
+              applied_at TIMESTAMP(3) NOT NULL DEFAULT now()
+            )
+          `);
+          const markerKey = label.replace(/\.sql$/, '');
+          const { rows } = await client.query(
+            'SELECT 1 FROM app_migration_markers WHERE marker_key = $1 LIMIT 1',
+            [markerKey]
+          );
+
+          // Migration 27 may have been applied before marker tracking was added.
+          // Always verify the live schema before trusting or creating its marker.
+          if (markerKey === '27_stock_ledger') {
+            const verification = await client.query(`
+              SELECT
+                to_regclass('public.stock_locations') IS NOT NULL AS locations,
+                to_regclass('public.stock_receipts') IS NOT NULL AS receipts,
+                to_regclass('public.stock_ledger') IS NOT NULL AS ledger,
+                to_regclass('public.v_stock_balance') IS NOT NULL AS balance_view,
+                EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_stock_ledger_append_only' AND NOT tgisinternal) AS ledger_append_only,
+                EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_stock_receipts_append_only' AND NOT tgisinternal) AS receipts_append_only,
+                EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_validate_stock_reversal' AND NOT tgisinternal) AS reversal_validation,
+                EXISTS (SELECT 1 FROM system_permissions WHERE permission_key='RECEIVE_STOCK') AS receive_permission,
+                EXISTS (SELECT 1 FROM system_permissions WHERE permission_key='ENTER_CASE_USAGE') AS usage_permission,
+                EXISTS (SELECT 1 FROM system_permissions WHERE permission_key='RECORD_GAS') AS gas_permission,
+                EXISTS (SELECT 1 FROM system_permissions WHERE permission_key='RECORD_PHARMACY_BILL') AS pharmacy_permission
+            `);
+            const state = verification.rows[0];
+            const schemaComplete = Object.values(state).every(Boolean);
+            if (rows.length > 0) {
+              if (!schemaComplete) {
+                throw new Error('Migration marker exists, but required Stock Ledger objects are missing. Restore the database or repair migration 27 before startup.');
+              }
+              logger.info(`  ↷ ${label} (marker and schema verified — skipped)`);
+              continue;
+            }
+            if (schemaComplete) {
+              await client.query(
+                'INSERT INTO app_migration_markers (marker_key) VALUES ($1) ON CONFLICT (marker_key) DO NOTHING',
+                [markerKey]
+              );
+              logger.info(`  ↷ ${label} (existing schema verified — marker recorded, skipped)`);
+              continue;
+            }
+          } else if (rows.length > 0) {
+            logger.info(`  ↷ ${label} (already applied — skipped)`);
+            continue;
+          }
+
+          await client.query('BEGIN');
+          try {
+            await client.query(readSql(filePath));
+            await client.query(
+              'INSERT INTO app_migration_markers (marker_key) VALUES ($1) ON CONFLICT (marker_key) DO NOTHING',
+              [markerKey]
+            );
+            await client.query('COMMIT');
+            logger.info(`  ✓ ${label} (applied and recorded)`);
+          } catch (migrationError) {
+            await client.query('ROLLBACK');
+            throw migrationError;
+          }
+        } else {
+          await client.query(readSql(filePath));
+          logger.info(`  ✓ ${label}`);
+        }
       } catch (err) {
         throw new Error(`Failed applying ${label}: ${err.message}`);
       }
@@ -175,6 +251,17 @@ async function initializeDatabase() {
     // This runs whether or not seed was skipped.  It guarantees that
     // no query hits a "materialized view has not been populated" error
     // (PostgreSQL error 55000) during normal API operation.
+    // Mobile OT PWA access is a permission seed, not a schema migration.
+    // Idempotent: creates no tables and never overwrites existing grants.
+    await client.query(`INSERT INTO system_permissions(permission_key, description)
+      VALUES ('MOBILE_OT_ACCESS', 'Access the dedicated mobile OT Store PWA (maximum three assigned users)')
+      ON CONFLICT (permission_key) DO NOTHING`);
+    await client.query(`INSERT INTO system_role_permissions(role_name, permission_id, is_granted)
+      SELECT roles.role_name, p.permission_id, FALSE
+      FROM (VALUES ('ADMIN'),('MANAGEMENT'),('FINANCE'),('OT_COORDINATOR'),('SURGEON'),('ANAESTHETIST'),('OT_NURSE'),('OT_TECHNICIAN'),('OT_STORE'),('VIEWER')) roles(role_name)
+      CROSS JOIN system_permissions p WHERE p.permission_key='MOBILE_OT_ACCESS'
+      ON CONFLICT (role_name, permission_id) DO NOTHING`);
+
     await refreshAllMatviews(client);
 
   } finally {
