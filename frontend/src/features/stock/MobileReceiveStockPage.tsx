@@ -1,3 +1,4 @@
+import { createUuid } from '@/utils/createUuid';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, Button, CircularProgress, MenuItem, Stack, TextField, Typography } from '@mui/material';
@@ -28,7 +29,7 @@ export function MobileReceiveStockPage() {
   const selected = useMemo(() => items.find((item: StockItem) => item.itemId === itemId), [items, itemId]);
   const mutation = useMutation({
     mutationFn: () => stockApi.createReceipt({
-      receiptId: crypto.randomUUID(), locationId: effectiveLocationId, invoiceNumber: invoiceNumber.trim(), invoiceDate: today(),
+      receiptId: createUuid(), locationId: effectiveLocationId, invoiceNumber: invoiceNumber.trim(), invoiceDate: today(),
       lines: [{ itemId, quantity: Number(quantity), unitCost: Number(unitCost), batchNumber: batchNumber.trim() || undefined, expiryDate: expiryDate || null, serialNumber: serialNumber.trim() || undefined }],
     }),
     onSuccess: () => {

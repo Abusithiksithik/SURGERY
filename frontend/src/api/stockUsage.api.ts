@@ -1,3 +1,4 @@
+import { createUuid } from '@/utils/createUuid';
 import { apiClient } from './client';
 import { postStockOperation } from '@/pwa/offlineOutbox';
 
@@ -10,7 +11,7 @@ export const stockUsageApi = {
   findCases: (search: string) => data<UsageCase[]>(apiClient.get('/stock/usage/cases', { params: { search } })),
   caseUsage: (surgeryId: string) => data<CaseUsageData>(apiClient.get(`/stock/usage/cases/${surgeryId}`)),
   issue: (payload: { idempotencyKey: string; surgeryId: string; surgeryNumber?: string | null; itemId: string; locationId: string; quantity: number; batchNumber?: string | null; expiryDate?: string | null; serialNumber?: string | null; notes?: string }) => postStockOperation('ISSUE_STOCK', '/stock/usage/issues', payload),
-  returnItem: (usageId: string, quantity: number, notes?: string) => postStockOperation('RETURN_STOCK', `/stock/usage/${usageId}/return`, { idempotencyKey: crypto.randomUUID(), quantity, notes }),
-  wastage: (usageId: string, quantity: number, notes?: string) => postStockOperation('RECORD_WASTAGE', `/stock/usage/${usageId}/wastage`, { idempotencyKey: crypto.randomUUID(), quantity, notes }),
+  returnItem: (usageId: string, quantity: number, notes?: string) => postStockOperation('RETURN_STOCK', `/stock/usage/${usageId}/return`, { idempotencyKey: createUuid(), quantity, notes }),
+  wastage: (usageId: string, quantity: number, notes?: string) => postStockOperation('RECORD_WASTAGE', `/stock/usage/${usageId}/wastage`, { idempotencyKey: createUuid(), quantity, notes }),
   handover: (usageId: string, notes?: string) => data(apiClient.post(`/stock/usage/${usageId}/pharmacy-handover`, { notes })),
 };

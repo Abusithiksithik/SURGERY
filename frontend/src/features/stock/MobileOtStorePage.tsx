@@ -12,7 +12,7 @@ export function MobileOtStorePage() {
   const [search,setSearch]=useState('');
   const navigate=useNavigate();
   const {hasPermission,logout,user}=useAuth();
-  const balances=useQuery({queryKey:['mobile-stock-balances'],queryFn:()=>stockApi.balances({page:1,limit:300}),refetchInterval:60000});
+  const balances=useQuery({queryKey:['mobile-stock-balances'],queryFn:()=>stockApi.balances({ page: 1, limit: 200 }),refetchInterval:60000});
   const rows=useMemo(()=> (balances.data||[]).filter(r=>`${r.itemCode} ${r.itemName} ${r.batchNumber||''}`.toLowerCase().includes(search.toLowerCase())),[balances.data,search]);
   return <Box sx={{maxWidth:760,mx:'auto',pb:4}}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:2,borderBottom:1,borderColor:'divider'}}>

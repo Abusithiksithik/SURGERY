@@ -1,3 +1,4 @@
+import { createUuid } from '@/utils/createUuid';
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
@@ -67,7 +68,7 @@ export function CaseConsumptionPage() {
     const matching = stockForItem.find(s => s.locationId === locationId && (s.batchNumber || '') === batch && (s.serialNumber || '') === serial);
     if (!matching) return setError('No matching available stock batch/serial found.');
     if (Number(quantity) > Number(matching.onHandQty)) return setError(`Only ${matching.onHandQty} ${matching.uom} available in the selected batch.`);
-    issueM.mutate({ idempotencyKey: crypto.randomUUID(), surgeryId: selected.surgeryId, surgeryNumber: selected.surgeryNumber, itemId, locationId, quantity: Number(quantity), batchNumber: batch || null, expiryDate: expiry || null, serialNumber: serial || null, notes: notes || undefined });
+    issueM.mutate({ idempotencyKey: createUuid(), surgeryId: selected.surgeryId, surgeryNumber: selected.surgeryNumber, itemId, locationId, quantity: Number(quantity), batchNumber: batch || null, expiryDate: expiry || null, serialNumber: serial || null, notes: notes || undefined });
   };
 
   return <Box>

@@ -1,3 +1,4 @@
+import { createUuid } from '@/utils/createUuid';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
@@ -15,7 +16,7 @@ import { BarcodeScannerDialog } from './components/BarcodeScannerDialog';
 
 const today = () => new Date().toISOString().slice(0, 10);
 type DraftLine = StockReceiptLineInput & { key: string };
-const blankLine = (): DraftLine => ({ key: crypto.randomUUID(), itemId: '', quantity: 1, unitCost: 0, batchNumber: '', expiryDate: '', serialNumber: '' });
+const blankLine = (): DraftLine => ({ key: createUuid(), itemId: '', quantity: 1, unitCost: 0, batchNumber: '', expiryDate: '', serialNumber: '' });
 const money = (value: unknown) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dateText = (value?: string | null) => value ? new Date(value).toLocaleDateString('en-IN') : '—';
 
@@ -113,7 +114,7 @@ export function StockStorePage() {
       if (item.trackSerial && Number(line.quantity) !== 1) throw new Error(`${item.itemName} is serial-tracked; enter one unit per line.`);
       return { itemId: line.itemId, quantity: Number(line.quantity), unitCost: Number(line.unitCost), batchNumber: line.batchNumber || undefined, expiryDate: line.expiryDate || null, serialNumber: line.serialNumber || undefined };
     });
-    receiptMutation.mutate({ receiptId: crypto.randomUUID(), locationId, vendorId: vendorId || null, invoiceNumber: invoiceNumber.trim() || undefined, invoiceDate: invoiceDate || null, notes: notes.trim() || undefined, lines: payloadLines });
+    receiptMutation.mutate({ receiptId: createUuid(), locationId, vendorId: vendorId || null, invoiceNumber: invoiceNumber.trim() || undefined, invoiceDate: invoiceDate || null, notes: notes.trim() || undefined, lines: payloadLines });
   };
 
   return <Box>
@@ -152,7 +153,7 @@ export function StockStorePage() {
         {itemById.get(countItemId)?.trackSerial && <Grid item xs={12} md={4}><TextField required fullWidth label="Serial Number" value={countSerial} onChange={(e) => setCountSerial(e.target.value)} /></Grid>}
         <Grid item xs={12}><Alert severity="info">Current ledger balance: {(balancesQ.data || []).filter((row) => row.itemId === countItemId && row.locationId === (countLocationId || locationId) && (row.batchNumber || '') === countBatch && (row.expiryDate || '') === countExpiry).reduce((sum, row) => sum + Number(row.onHandQty || 0), 0).toLocaleString('en-IN')} {itemById.get(countItemId)?.uom || ''}. Enter the physical quantity counted for this item/location/batch.</Alert></Grid>
         <Grid item xs={12}><TextField required fullWidth multiline minRows={2} label="Reason for count difference / cut-over" value={countReason} onChange={(e) => setCountReason(e.target.value)} /></Grid>
-        <Grid item xs={12}><Button variant="contained" disabled={countMutation.isPending || !countItemId || !(countLocationId || locationId) || countQty === '' || Number(countQty) < 0 || countReason.trim().length < 5 || (!!itemById.get(countItemId)?.trackBatch && !countBatch.trim()) || (!!itemById.get(countItemId)?.trackExpiry && !countExpiry) || (!!itemById.get(countItemId)?.trackSerial && !countSerial.trim())} onClick={() => countMutation.mutate({ idempotencyKey: crypto.randomUUID(), itemId: countItemId, locationId: countLocationId || locationId, countedQuantity: Number(countQty), batchNumber: countBatch || undefined, expiryDate: countExpiry || null, serialNumber: countSerial || undefined, reason: countReason.trim() })}>{countMutation.isPending ? 'Saving…' : 'Submit Physical Count'}</Button></Grid>
+        <Grid item xs={12}><Button variant="contained" disabled={countMutation.isPending || !countItemId || !(countLocationId || locationId) || countQty === '' || Number(countQty) < 0 || countReason.trim().length < 5 || (!!itemById.get(countItemId)?.trackBatch && !countBatch.trim()) || (!!itemById.get(countItemId)?.trackExpiry && !countExpiry) || (!!itemById.get(countItemId)?.trackSerial && !countSerial.trim())} onClick={() => countMutation.mutate({ idempotencyKey: createUuid(), itemId: countItemId, locationId: countLocationId || locationId, countedQuantity: Number(countQty), batchNumber: countBatch || undefined, expiryDate: countExpiry || null, serialNumber: countSerial || undefined, reason: countReason.trim() })}>{countMutation.isPending ? 'Saving…' : 'Submit Physical Count'}</Button></Grid>
       </Grid>}
     </Paper>}
 

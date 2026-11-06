@@ -1,3 +1,4 @@
+import { createUuid } from '@/utils/createUuid';
 import { apiClient } from '@/api/client';
 
 export type OfflineOperationKind = 'ISSUE_STOCK' | 'RETURN_STOCK' | 'RECORD_WASTAGE';
@@ -125,7 +126,7 @@ export async function queueStockOperation<T extends Record<string, unknown>>(
   url: string,
   payload: T,
 ): Promise<{ queued: true; operationId: string }> {
-  const id = String(payload.idempotencyKey || crypto.randomUUID());
+  const id = String(payload.idempotencyKey || createUuid());
   await enqueueOfflineOperation({ id, kind, url, payload, createdAt: new Date().toISOString(), status: 'PENDING' });
   return { queued: true, operationId: id };
 }
