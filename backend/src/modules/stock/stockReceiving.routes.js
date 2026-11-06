@@ -8,7 +8,7 @@ const { authenticate } = require('../../middleware/auth.middleware');
 const { requirePermission } = require('../../middleware/permission.middleware');
 
 const router = express.Router();
-const uuid = Joi.string().guid({ version: ['uuidv4', 'uuidv5'] });
+const uuid = require('./uuid.validation');
 const receiptLine = Joi.object({
   itemId: uuid.required(),
   quantity: Joi.number().precision(3).positive().required(),

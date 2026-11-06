@@ -7,7 +7,7 @@ const { authenticate } = require('../../middleware/auth.middleware');
 const { requirePermission } = require('../../middleware/permission.middleware');
 
 const router = express.Router();
-const uuid = Joi.string().guid({ version: ['uuidv4','uuidv5'] });
+const uuid = require('./uuid.validation');
 const issueBody = Joi.object({
   idempotencyKey: uuid.required(),
   surgeryId: uuid.required(),
