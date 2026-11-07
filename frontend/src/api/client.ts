@@ -82,8 +82,13 @@ apiClient.interceptors.response.use(
 /** Extracts a human-readable message from an API error response. */
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
+    if (!error.response && error.code !== 'ERR_CANCELED') {
+      return 'Server connection lost. Please retry.';
+    }
     const data = error.response?.data as { message?: string; details?: unknown } | undefined;
     if (data?.message) return data.message;
+    if (error.response?.status === 401) return 'Session expired. Please sign in again.';
+    if ((error.response?.status ?? 0) >= 500) return 'Server error. Please try again.';
     if (error.message) return error.message;
   }
   if (error instanceof Error) return error.message;
