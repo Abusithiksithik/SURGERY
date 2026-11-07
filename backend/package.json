@@ -4,8 +4,8 @@
   "description": "Production backend for the Hospital Surgery Cost Intelligence & Recommendation Engine module.",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node src/server.js",
+    "start": "node scripts/dev-supervisor.js",
+    "dev": "node scripts/dev-supervisor.js",
     "seed": "node database/seed-node.js",
     "test": "node --test tests/**/*.test.js",
     "lint": "eslint src",

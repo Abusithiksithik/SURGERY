@@ -56,7 +56,7 @@ const SCHEMA_FILES = [
   // New tracked migrations 27-30 are discovered by sequence number. Existing
   // 01-26 bootstrap behavior is intentionally preserved.
   ...fs.readdirSync(path.join(DB_DIR, 'split'))
-    .filter((name) => /^(2[7-9]|30)_.+\.sql$/.test(name))
+    .filter((name) => /^([3-9][0-9]|[1-9][0-9]{2,})_.+\.sql$/.test(name))
     .sort()
     .map((name) => path.join(DB_DIR, 'split', name)),
 ];
