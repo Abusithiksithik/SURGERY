@@ -1,6 +1,10 @@
 'use strict';
 
 const express = require('express');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const Joi = require('joi');
 const controller = require('./stockReceiving.controller');
 const validate = require('../../middleware/validate.middleware');
@@ -8,6 +12,20 @@ const { authenticate } = require('../../middleware/auth.middleware');
 const { requirePermission } = require('../../middleware/permission.middleware');
 
 const router = express.Router();
+const invoiceDir = path.join(__dirname, '..', '..', '..', 'uploads', 'stock-receipts');
+fs.mkdirSync(invoiceDir, { recursive: true });
+const allowedInvoiceTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+const invoiceUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, invoiceDir),
+    filename: (_req, file, cb) => {
+      const extension = ({ 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' })[file.mimetype];
+      cb(null, `${crypto.randomUUID()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, allowedInvoiceTypes.has(file.mimetype)),
+});
 const uuid = require('./uuid.validation');
 const receiptLine = Joi.object({
   itemId: uuid.required(),
@@ -54,10 +72,13 @@ const balanceQuery = Joi.object({
   limit: Joi.number().integer().min(1).max(200),
 });
 
-router.get('/items', authenticate, validate({ query: Joi.object({ search: Joi.string().allow('').max(100) }) }), controller.listItems);
+router.get('/items', authenticate, validate({ query: Joi.object({ search: Joi.string().allow('').max(100), locationId: uuid }) }), controller.listItems);
 router.get('/locations', authenticate, controller.listLocations);
 router.get('/receipts', authenticate, validate({ query: listQuery }), controller.listReceipts);
+router.get('/receipts/:id/invoice', authenticate, requirePermission('RECEIVE_STOCK'), validate({ params: Joi.object({ id: uuid.required() }) }), controller.downloadReceiptInvoice);
+router.post('/receipts/:id/invoice', authenticate, requirePermission('RECEIVE_STOCK'), validate({ params: Joi.object({ id: uuid.required() }) }), invoiceUpload.single('file'), controller.uploadReceiptInvoice);
 router.get('/receipts/:id', authenticate, validate({ params: Joi.object({ id: uuid.required() }) }), controller.getReceipt);
+router.get('/balance-summary', authenticate, validate({ query: Joi.object({ locationId: uuid.required() }) }), controller.getBalanceSummary);
 router.get('/balance', authenticate, validate({ query: balanceQuery }), controller.getBalances);
 router.post('/receipts', authenticate, requirePermission('RECEIVE_STOCK'), validate({ body: receiptBody }), controller.createReceipt);
 router.post('/physical-count', authenticate, requirePermission('APPROVE_STOCK_ADJUSTMENT'), validate({ body: physicalCountBody }), controller.recordPhysicalCount);

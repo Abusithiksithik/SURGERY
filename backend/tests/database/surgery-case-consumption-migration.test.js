@@ -10,7 +10,7 @@ const routes = fs.readFileSync(path.join(root, 'src/modules/stock/stockUsage.rou
 const service = fs.readFileSync(path.join(root, 'src/modules/stock/stockUsage.service.js'), 'utf8');
 
 test('S3-2 migration 29 is auto-discovered and uses the tracked migration runner', () => {
-  assert.match(init, /2\[7-9\]\|30/);
+  assert.match(init, /2\[7-9\]\|3\[0-9\]/);
   assert.ok(fs.existsSync(path.join(root, 'database/split/29_surgery_case_consumption.sql')));
   assert.match(sql, /surgery_usage_lines/);
 });

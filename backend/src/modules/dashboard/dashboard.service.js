@@ -204,6 +204,130 @@ async function forecast({ branchId, metric, periods }) {
   };
 }
 
+
+async function otFixedStockAlerts() {
+  return queryRows(
+    `SELECT t.target_id, t.item_id, t.location_id, ci.item_code, ci.item_name,
+            l.location_code, l.location_name, t.fixed_qty,
+            COALESCE(b.on_hand_qty, 0)::NUMERIC(14,3) AS on_hand_qty,
+            (COALESCE(b.on_hand_qty, 0) - t.fixed_qty)::NUMERIC(14,3) AS difference,
+            GREATEST(COALESCE(m.last_movement_at, t.updated_at), t.updated_at) AS mismatch_since,
+            CASE WHEN now() - GREATEST(COALESCE(m.last_movement_at, t.updated_at), t.updated_at) > INTERVAL '24 hours'
+                 THEN 'RED' ELSE 'YELLOW' END AS severity,
+            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (INTERVAL '24 hours' -
+              (now() - GREATEST(COALESCE(m.last_movement_at, t.updated_at), t.updated_at)))) / 3600))::int AS hours_left,
+            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - GREATEST(COALESCE(m.last_movement_at, t.updated_at), t.updated_at)) -
+              INTERVAL '24 hours') / 3600))::int AS hours_overdue
+       FROM ot_fixed_stock_targets t
+       JOIN consumable_items ci ON ci.item_id=t.item_id
+       JOIN stock_locations l ON l.location_id=t.location_id
+       LEFT JOIN (
+         SELECT item_id, location_id, SUM(on_hand_qty)::NUMERIC(14,3) AS on_hand_qty
+         FROM v_stock_balance GROUP BY item_id, location_id
+       ) b ON b.item_id=t.item_id AND b.location_id=t.location_id
+       LEFT JOIN LATERAL (
+         SELECT MAX(entered_at) AS last_movement_at FROM stock_ledger sl
+          WHERE sl.item_id=t.item_id AND sl.location_id=t.location_id
+       ) m ON TRUE
+      WHERE t.is_active=TRUE AND ci.is_active=TRUE
+        AND COALESCE(b.on_hand_qty,0) <> t.fixed_qty
+      ORDER BY CASE WHEN now()-GREATEST(COALESCE(m.last_movement_at,t.updated_at),t.updated_at)>INTERVAL '24 hours' THEN 0 ELSE 1 END,
+               ci.item_name LIMIT 500`
+  );
+}
+
+async function otExpiryAlerts() {
+  return queryRows(
+    `SELECT b.item_id, b.item_code, b.item_name, ci.category, b.location_id, l.location_code,
+            b.batch_number, b.expiry_date, b.on_hand_qty,
+            (b.expiry_date - (now() AT TIME ZONE 'Asia/Kolkata')::date)::int AS days_left,
+            CASE WHEN b.expiry_date < (now() AT TIME ZONE 'Asia/Kolkata')::date
+                 THEN 'EXPIRED' ELSE 'EXPIRING_SOON' END AS status
+       FROM v_stock_balance b
+       JOIN consumable_items ci ON ci.item_id=b.item_id
+       JOIN stock_locations l ON l.location_id=b.location_id
+      WHERE b.on_hand_qty > 0 AND b.expiry_date IS NOT NULL
+        AND b.expiry_date <= (now() AT TIME ZONE 'Asia/Kolkata')::date + INTERVAL '3 months'
+        AND NOT EXISTS (
+          SELECT 1 FROM ot_stock_alert_closures c
+           WHERE c.item_id=b.item_id AND c.location_id=b.location_id
+             AND c.batch_number IS NOT DISTINCT FROM b.batch_number
+             AND c.expiry_date=b.expiry_date
+        )
+      ORDER BY b.expiry_date, b.item_name LIMIT 1000`
+  );
+}
+
+async function closedOtExpiryAlerts() {
+  return queryRows(
+    `SELECT c.closure_id, c.item_id, c.location_id, c.batch_number, c.expiry_date,
+            c.remarks, c.closed_at, ci.item_code, ci.item_name, l.location_code
+       FROM ot_stock_alert_closures c
+       JOIN consumable_items ci ON ci.item_id=c.item_id
+       JOIN stock_locations l ON l.location_id=c.location_id
+      ORDER BY c.closed_at DESC LIMIT 200`
+  );
+}
+
+async function listFixedStockTargets() {
+  return queryRows(
+    `SELECT t.target_id, t.item_id, t.location_id, t.fixed_qty, t.is_active,
+            ci.item_code, ci.item_name, l.location_code, l.location_name
+       FROM ot_fixed_stock_targets t
+       JOIN consumable_items ci ON ci.item_id=t.item_id
+       JOIN stock_locations l ON l.location_id=t.location_id
+      ORDER BY l.location_name, ci.item_name`
+  );
+}
+
+async function saveFixedStockTarget({ itemId, locationId, fixedQty, userId }) {
+  const rows = await queryRows(
+    `INSERT INTO ot_fixed_stock_targets(item_id,location_id,fixed_qty,configured_by)
+     SELECT ci.item_id, sl.location_id, $3, $4
+       FROM consumable_items ci CROSS JOIN stock_locations sl
+      WHERE ci.item_id=$1 AND ci.is_active=TRUE AND sl.location_id=$2 AND sl.is_active=TRUE
+     ON CONFLICT(item_id,location_id) DO UPDATE
+       SET fixed_qty=EXCLUDED.fixed_qty, is_active=TRUE, configured_by=EXCLUDED.configured_by, updated_at=now()
+     RETURNING target_id,item_id,location_id,fixed_qty,is_active`,
+    [itemId, locationId, fixedQty, userId]
+  );
+  if (!rows.length) { const e = new Error('Active item or OT store location not found'); e.statusCode=404; throw e; }
+  return rows[0];
+}
+
+async function closeOtExpiryAlert({ itemId, locationId, batchNumber, expiryDate, remarks, userId, scope = 'BATCH' }) {
+  if (scope === 'CATEGORY') {
+    const rows = await queryRows(
+      `INSERT INTO ot_stock_alert_closures(item_id,location_id,batch_number,expiry_date,remarks,closed_by)
+       SELECT b.item_id,b.location_id,b.batch_number,b.expiry_date,$3,$4
+         FROM v_stock_balance b
+         JOIN consumable_items ci ON ci.item_id=b.item_id
+        WHERE ci.category=(SELECT category FROM consumable_items WHERE item_id=$1)
+          AND b.location_id=$2 AND b.on_hand_qty>0 AND b.expiry_date IS NOT NULL
+          AND b.expiry_date <= (now() AT TIME ZONE 'Asia/Kolkata')::date + INTERVAL '3 months'
+       ON CONFLICT(item_id,location_id,batch_key,expiry_date) DO NOTHING
+       RETURNING closure_id`,
+      [itemId, locationId, remarks, userId]
+    );
+    if (!rows.length) { const e = new Error('No open expiry alerts found for this category'); e.statusCode=409; throw e; }
+    return { closedCount: rows.length, scope: 'CATEGORY' };
+  }
+  const rows = await queryRows(
+    `INSERT INTO ot_stock_alert_closures(item_id,location_id,batch_number,expiry_date,remarks,closed_by)
+     SELECT b.item_id,b.location_id,b.batch_number,b.expiry_date,$5,$6
+       FROM v_stock_balance b
+      WHERE b.item_id=$1 AND b.location_id=$2
+        AND b.batch_number IS NOT DISTINCT FROM $3::varchar
+        AND b.expiry_date=$4::date AND b.on_hand_qty>0
+        AND b.expiry_date <= (now() AT TIME ZONE 'Asia/Kolkata')::date + INTERVAL '3 months'
+     ON CONFLICT(item_id,location_id,batch_key,expiry_date) DO NOTHING
+     RETURNING closure_id`,
+    [itemId, locationId, batchNumber || null, expiryDate, remarks, userId]
+  );
+  if (!rows.length) { const e = new Error('Active expiry alert not found or already closed'); e.statusCode=409; throw e; }
+  return rows[0];
+}
+
 module.exports = {
   summary,
   topProfitable,
@@ -215,4 +339,10 @@ module.exports = {
   branchComparison,
   doctorComparison,
   forecast,
+  otFixedStockAlerts,
+  otExpiryAlerts,
+  closedOtExpiryAlerts,
+  listFixedStockTargets,
+  saveFixedStockTarget,
+  closeOtExpiryAlert,
 };

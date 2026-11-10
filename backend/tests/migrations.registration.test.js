@@ -53,7 +53,7 @@ test('item master migration adds updated_at for legacy consumable_items schemas'
 
 test('tracked migration runner supports only 27-30 and skips already applied files',()=>{
  const init=fs.readFileSync(path.join(root,'src/db/initializeDatabase.js'),'utf8');
- assert.match(init,/2\[7-9\]\|30/);
+ assert.match(init,/2\[7-9\]\|3\[0-9\]/);
  assert.match(init,/readdirSync/);
  assert.match(init,/app_migration_markers/);
  assert.match(init,/already applied — skipped/);
@@ -89,7 +89,7 @@ test('audit list returns actor name and username for readable history',()=>{
 test('migration 28 repairs missing consumable item timestamps and is auto-discovered',()=>{
  const init=fs.readFileSync(path.join(root,'src/db/initializeDatabase.js'),'utf8');
  const migration=fs.readFileSync(path.join(root,'database/split/28_item_master_timestamp_compat.sql'),'utf8');
- assert.match(init,/2\[7-9\]\|30/);
+ assert.match(init,/2\[7-9\]\|3\[0-9\]/);
  assert.match(init,/readdirSync/);
  assert.match(migration,/ADD COLUMN IF NOT EXISTS created_at/);
  assert.match(migration,/ADD COLUMN IF NOT EXISTS updated_at/);

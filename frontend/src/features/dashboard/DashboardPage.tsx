@@ -32,13 +32,14 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { KpiCard } from '@/components/common/KpiCard';
 import { SectionCard } from '@/components/common/SectionCard';
 import { TrendLineChart } from '@/components/charts/TrendLineChart';
-import { LoadingState, ErrorState } from '@/components/common/AsyncStates';
+import { LoadingState } from '@/components/common/AsyncStates';
 import { ExportMenu } from '@/components/common/ExportMenu';
 import { useBranches } from '@/hooks/useMasterData';
 import * as dashboardApi from '@/api/dashboard.api';
 import * as reportsApi from '@/api/reports.api';
 import { formatCurrency, formatPercent, formatDate } from '@/utils/format';
 import { palette } from '@/theme/tokens';
+import { OtStockAlertsPanel } from './OtStockAlertsPanel';
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -46,6 +47,12 @@ export function DashboardPage() {
   const [months, setMonths] = useState(12);
 
   const { data: branches } = useBranches();
+  // Keep the surgery ranking cards on exactly the same rolling period as the KPI summary.
+  const dateTo = new Date().toISOString().slice(0, 10);
+  const rangeStart = new Date();
+  rangeStart.setMonth(rangeStart.getMonth() - months);
+  rangeStart.setDate(1);
+  const dateFrom = rangeStart.toISOString().slice(0, 10);
 
   const summaryQuery = useQuery({
     queryKey: ['dashboard', 'summary', branchId, months],
@@ -53,13 +60,13 @@ export function DashboardPage() {
   });
 
   const topProfitableQuery = useQuery({
-    queryKey: ['dashboard', 'top-profitable', branchId],
-    queryFn: () => dashboardApi.getTopProfitable({ branchId: branchId || undefined, limit: 5 }),
+    queryKey: ['dashboard', 'top-profitable', branchId, months],
+    queryFn: () => dashboardApi.getTopProfitable({ branchId: branchId || undefined, limit: 5, dateFrom, dateTo }),
   });
 
   const lowestMarginQuery = useQuery({
-    queryKey: ['dashboard', 'lowest-margin', branchId],
-    queryFn: () => dashboardApi.getLowestMargin({ branchId: branchId || undefined, limit: 5 }),
+    queryKey: ['dashboard', 'lowest-margin', branchId, months],
+    queryFn: () => dashboardApi.getLowestMargin({ branchId: branchId || undefined, limit: 5, dateFrom, dateTo }),
   });
 
   const forecastQuery = useQuery({
@@ -120,7 +127,7 @@ export function DashboardPage() {
             </Button>
           }
         >
-          Dashboard summary could not be loaded. Check that the backend server is running on port 5000.
+          Dashboard summary could not be loaded. Check that the backend server is running on port 7000.
         </Alert>
       )}
 
@@ -164,6 +171,8 @@ export function DashboardPage() {
           />
         </Grid>
       </Grid>
+
+      <OtStockAlertsPanel />
 
       <Grid container spacing={2.5}>
         <Grid item xs={12} lg={8}>

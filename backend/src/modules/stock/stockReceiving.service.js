@@ -8,19 +8,24 @@ const camel = (row) => Object.fromEntries(Object.entries(row).map(([key, value])
   key.replace(/_([a-z])/g, (_, char) => char.toUpperCase()), value,
 ]));
 
-async function listItems(search = '') {
-  const params = [];
+async function listItems(search = '', locationId = null) {
+  const params = [locationId || null];
   let where = "WHERE ci.is_active = TRUE AND COALESCE(NULLIF(ci.uom, ''), NULLIF(ci.unit, '')) IS NOT NULL";
   if (search) {
     params.push(`%${String(search).trim().slice(0, 100)}%`);
-    where += ` AND (ci.item_code ILIKE $1 OR ci.item_name ILIKE $1 OR ci.generic_name ILIKE $1 OR ci.brand ILIKE $1)`;
+    const searchParam = `$${params.length}`;
+    where += ` AND (ci.item_code ILIKE ${searchParam} OR ci.item_name ILIKE ${searchParam} OR ci.generic_name ILIKE ${searchParam} OR ci.brand ILIKE ${searchParam})`;
   }
   const rows = await queryRows(
     `SELECT ci.item_id, ci.item_code, ci.item_name, ci.category,
             COALESCE(NULLIF(ci.uom, ''), NULLIF(ci.unit, '')) AS uom,
             ci.pack_size, ci.pack_uom, ci.track_batch, ci.track_expiry, ci.track_serial,
-            ci.purchase_rate, ci.standard_cost, ci.default_vendor_id
-       FROM consumable_items ci ${where}
+            ci.purchase_rate, ci.standard_cost, ci.default_vendor_id,
+            COALESCE(t.fixed_qty, ci.fixed_qty_in_ot, 0) AS fixed_qty_in_ot
+       FROM consumable_items ci
+       LEFT JOIN ot_fixed_stock_targets t ON t.item_id=ci.item_id
+         AND t.is_active=TRUE AND t.location_id=COALESCE($1::uuid, (SELECT location_id FROM stock_locations WHERE lower(trim(location_code))='ot_store' LIMIT 1))
+       ${where}
       ORDER BY ci.item_name ASC LIMIT 300`, params
   );
   return rows.map(camel);
@@ -37,8 +42,9 @@ async function listLocations() {
 async function getExistingReceipt(client, receiptId) {
   const header = await client.query(
     `SELECT r.*, v.name AS vendor_name, l.location_code, l.location_name,
-            u.full_name AS received_by_name
+            u.full_name AS received_by_name, a.file_name AS invoice_file_name
        FROM stock_receipts r
+       LEFT JOIN stock_receipt_attachments a ON a.receipt_id=r.receipt_id
        LEFT JOIN vendors v ON v.vendor_id = r.vendor_id
        JOIN stock_locations l ON l.location_id = r.location_id
        LEFT JOIN users u ON u.user_id = r.received_by
@@ -163,14 +169,16 @@ async function listReceipts({ page = 1, limit = 20, search = '', dateFrom, dateT
             r.received_at, r.notes, v.name AS vendor_name, l.location_code,
             u.full_name AS received_by_name,
             COUNT(sl.ledger_id)::int AS line_count,
-            COALESCE(SUM(sl.qty_in * sl.unit_cost),0)::numeric(14,2) AS receipt_total
+            COALESCE(SUM(sl.qty_in * sl.unit_cost),0)::numeric(14,2) AS receipt_total,
+            a.file_name AS invoice_file_name
        FROM stock_receipts r
+       LEFT JOIN stock_receipt_attachments a ON a.receipt_id=r.receipt_id
        LEFT JOIN vendors v ON v.vendor_id=r.vendor_id
        JOIN stock_locations l ON l.location_id=r.location_id
        LEFT JOIN users u ON u.user_id=r.received_by
        LEFT JOIN stock_ledger sl ON sl.receipt_id=r.receipt_id AND sl.txn_type='RECEIPT'
        ${clause}
-      GROUP BY r.receipt_id, v.name, l.location_code, u.full_name
+      GROUP BY r.receipt_id, v.name, l.location_code, u.full_name, a.file_name
       ORDER BY r.received_at DESC
       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
     [...values, safeLimit, (safePage - 1) * safeLimit]
@@ -181,8 +189,9 @@ async function listReceipts({ page = 1, limit = 20, search = '', dateFrom, dateT
 async function getReceipt(receiptId) {
   const header = await queryOne(
     `SELECT r.*, v.name AS vendor_name, l.location_code, l.location_name,
-            u.full_name AS received_by_name
-       FROM stock_receipts r LEFT JOIN vendors v ON v.vendor_id=r.vendor_id
+            u.full_name AS received_by_name, a.file_name AS invoice_file_name
+       FROM stock_receipts r LEFT JOIN stock_receipt_attachments a ON a.receipt_id=r.receipt_id
+       LEFT JOIN vendors v ON v.vendor_id=r.vendor_id
        JOIN stock_locations l ON l.location_id=r.location_id
        LEFT JOIN users u ON u.user_id=r.received_by
       WHERE r.receipt_id=$1`, [receiptId]
@@ -221,6 +230,17 @@ async function getBalances({ search = '', locationId, itemId, page = 1, limit = 
   return { items: rows.map(camel), meta: { page: safePage, limit: safeLimit, total: Number(count.total), totalPages: Math.ceil(Number(count.total) / safeLimit) } };
 }
 
+
+
+async function getBalanceSummary(locationId) {
+  const rows = await queryRows(
+    `SELECT item_id, location_id, SUM(on_hand_qty)::NUMERIC(14,3) AS on_hand_qty
+       FROM v_stock_balance
+      WHERE location_id=$1
+      GROUP BY item_id, location_id`, [locationId]
+  );
+  return rows.map(camel);
+}
 
 async function recordPhysicalCount(data, userId) {
   return withTransaction(async (client) => {
@@ -284,4 +304,27 @@ async function recordPhysicalCount(data, userId) {
   });
 }
 
-module.exports = { listItems, listLocations, createReceipt, listReceipts, getReceipt, getBalances, recordPhysicalCount };
+async function saveReceiptInvoice(receiptId, file, userId) {
+  const receipt = await queryOne('SELECT receipt_id FROM stock_receipts WHERE receipt_id=$1', [receiptId]);
+  if (!receipt) throw ApiError.notFound('Stock receipt not found.');
+  const existing = await queryOne('SELECT attachment_id, file_name, file_path, file_size, mime_type, uploaded_at FROM stock_receipt_attachments WHERE receipt_id=$1', [receiptId]);
+  if (existing) return { ...camel(existing), alreadyUploaded: true };
+  const row = await queryOne(
+    `INSERT INTO stock_receipt_attachments(receipt_id,file_name,file_path,file_size,mime_type,uploaded_by)
+     VALUES($1,$2,$3,$4,$5,$6)
+     RETURNING attachment_id,receipt_id,file_name,file_path,file_size,mime_type,uploaded_at`,
+    [receiptId, file.fileName, file.filePath, file.fileSize, file.mimeType, userId || null]
+  );
+  return camel(row);
+}
+
+async function getReceiptInvoice(receiptId) {
+  const row = await queryOne(
+    `SELECT attachment_id, receipt_id, file_name, file_path, file_size, mime_type, uploaded_at
+       FROM stock_receipt_attachments WHERE receipt_id=$1`, [receiptId]
+  );
+  if (!row) throw ApiError.notFound('No invoice attachment was found for this receipt.');
+  return camel(row);
+}
+
+module.exports = { listItems, listLocations, createReceipt, listReceipts, getReceipt, getBalances, recordPhysicalCount, saveReceiptInvoice, getReceiptInvoice, getBalanceSummary };

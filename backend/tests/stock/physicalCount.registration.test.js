@@ -27,5 +27,5 @@ test('migration 30 seeds adjustment approval permission with default deny', () =
   assert.match(migration, /APPROVE_STOCK_ADJUSTMENT/);
   assert.match(migration, /FALSE/);
   const init = fs.readFileSync(path.join(root, 'src/db/initializeDatabase.js'), 'utf8');
-  assert.match(init, /2\[7-9\]\|30/);
+  assert.match(init, /2\[7-9\]\|3\[0-9\]/);
 });

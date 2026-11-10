@@ -14,7 +14,7 @@ const bootstrap = fs.readFileSync(bootstrapPath, 'utf8');
 test('S3-1 migration is discovered after migration 26', () => {
   assert.match(bootstrap, /26_surgery_number\.sql'/);
   assert.match(bootstrap, /readdirSync/);
-  assert.match(bootstrap, /2\[7-9\]\|30/);
+  assert.match(bootstrap, /2\[7-9\]\|3\[0-9\]/);
   assert.ok(fs.existsSync(migrationPath));
 });
 

@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { getErrorMessage } from '@/api/client';
 import { stockApi, type StockItem, type StockReceiptLineInput } from '@/api/stock.api';
 import { BarcodeScannerDialog } from './components/BarcodeScannerDialog';
+import { OtItemMasterDialog } from './components/OtItemMasterDialog';
 
 const today = () => new Date().toISOString().slice(0, 10);
 type DraftLine = StockReceiptLineInput & { key: string };
@@ -25,6 +26,7 @@ export function StockStorePage() {
   const { hasPermission } = useAuth();
   const [tab, setTab] = useState(0);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [addItemOpen, setAddItemOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState<'receipt' | 'count'>('receipt');
   const [search, setSearch] = useState('');
@@ -33,7 +35,10 @@ export function StockStorePage() {
   const [success, setSuccess] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(today());
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [indentMode, setIndentMode] = useState('MANUAL');
   const [vendorId, setVendorId] = useState('');
+  const [receivedFrom, setReceivedFrom] = useState('Pharmacy');
   const [locationId, setLocationId] = useState('');
   const [notes, setNotes] = useState('');
   const [countItemId, setCountItemId] = useState('');
@@ -47,9 +52,10 @@ export function StockStorePage() {
   const qc = useQueryClient();
 
   const locationsQ = useQuery({ queryKey: ['stock', 'locations'], queryFn: stockApi.locations });
-  const itemsQ = useQuery({ queryKey: ['stock', 'items'], queryFn: () => stockApi.items() });
+  const itemsQ = useQuery({ queryKey: ['stock', 'items', locationId], queryFn: () => stockApi.items('', locationId || undefined) });
   const receiptsQ = useQuery({ queryKey: ['stock', 'receipts'], queryFn: () => stockApi.receipts({ page: 1, limit: 100 }) });
   const balancesQ = useQuery({ queryKey: ['stock', 'balances'], queryFn: () => stockApi.balances({ page: 1, limit: 200 }) });
+  const balanceSummaryQ = useQuery({ queryKey: ['stock', 'balance-summary', locationId], queryFn: () => stockApi.balanceSummary(locationId), enabled: !!locationId });
   const vendorsQ = useQuery({
     queryKey: ['stock', 'vendors'],
     queryFn: async () => { const r = await (await import('@/api/client')).apiClient.get('/masters/vendors', { params: { active: true, limit: 500 } }); return (r.data.data || []) as Array<{ vendorId: string; name: string; isActive?: boolean }>; },
@@ -60,15 +66,23 @@ export function StockStorePage() {
     onError: (e) => { setError(getErrorMessage(e)); setSuccess(''); },
   });
   const receiptMutation = useMutation({
-    mutationFn: stockApi.createReceipt,
-    onSuccess: () => {
-      setSuccess('Stock receipt saved. Stock ledger and balance have been updated.'); setError('');
+    mutationFn: async (payload: import('@/api/stock.api').StockReceiptInput) => {
+      const receipt = await stockApi.createReceipt(payload);
+      let attachmentWarning = '';
+      if (invoiceFile) {
+        try { await stockApi.uploadReceiptInvoice(payload.receiptId, invoiceFile); }
+        catch (uploadError) { attachmentWarning = ` Receipt saved, but invoice upload failed: ${getErrorMessage(uploadError)}`; }
+      }
+      return { receipt, attachmentWarning };
+    },
+    onSuccess: ({ attachmentWarning }) => {
+      setSuccess(`Stock receipt saved. Stock ledger and balance have been updated.${attachmentWarning}`); setError('');
       setReceiptOpen(false); resetForm(); setItemSearch('');
       qc.invalidateQueries({ queryKey: ['stock'] });
     },
     onError: (e) => { setError(getErrorMessage(e)); setSuccess(''); },
   });
-  const resetForm = () => { setInvoiceNumber(''); setInvoiceDate(today()); setVendorId(''); setLocationId(locationsQ.data?.[0]?.locationId || ''); setNotes(''); setLines([blankLine()]); };
+  const resetForm = () => { setInvoiceNumber(''); setInvoiceDate(today()); setInvoiceFile(null); setIndentMode('MANUAL'); setVendorId(''); setReceivedFrom('Pharmacy'); setLocationId(locationsQ.data?.[0]?.locationId || ''); setNotes(''); setLines([blankLine()]); };
   const itemById = useMemo(() => new Map((itemsQ.data || []).map((item) => [item.itemId, item])), [itemsQ.data]);
   useEffect(() => { if (!locationId && locationsQ.data?.[0]) setLocationId(locationsQ.data[0].locationId); }, [locationId, locationsQ.data]);
   const selectableItems = (itemsQ.data || []).filter((item) => `${item.itemCode} ${item.itemName}`.toLowerCase().includes(itemSearch.toLowerCase()));
@@ -84,6 +98,15 @@ export function StockStorePage() {
   const receiptTotal = lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitCost || 0), 0);
   const filteredBalances = (balancesQ.data || []).filter((row) => `${row.itemCode} ${row.itemName} ${row.batchNumber || ''}`.toLowerCase().includes(search.toLowerCase()));
   const filteredReceipts = (receiptsQ.data || []).filter((row) => `${row.invoiceNumber || ''} ${row.receiptNumber || ''} ${row.vendorName || ''}`.toLowerCase().includes(search.toLowerCase()));
+
+  const loadSampleIntents = () => {
+    const sampleItems = (itemsQ.data || []).filter((item) => !!item.uom?.trim()).slice(0, 3);
+    if (!sampleItems.length) { setError('No stock-ready Item Master items are available for a sample receipt.'); return; }
+    setReceivedFrom('Pharmacy'); setVendorId(''); setInvoiceNumber('SAMPLE-INTENT'); setInvoiceDate(today());
+    setLines(sampleItems.map((item) => ({ ...blankLine(), itemId: item.itemId, quantity: 1, unitCost: Number(item.purchaseRate ?? item.standardCost ?? 0) })));
+    setError(''); setSuccess('Sample intent loaded into this unsaved draft only. Review every line before saving.');
+  };
+  const resetDemoData = () => { resetForm(); setError(''); setSuccess('Sample draft cleared. No saved receipts or stock balances were changed.'); };
 
   const openReceipt = () => {
     setError(''); setSuccess('');
@@ -103,6 +126,8 @@ export function StockStorePage() {
   }, [itemsQ.data]);
   const submitReceipt = () => {
     setError('');
+    if (receivedFrom === 'Outside Vendor' && !vendorId) return setError('Select the supplier for an outside-vendor receipt.');
+    if (invoiceFile && (invoiceFile.size > 10 * 1024 * 1024 || !['application/pdf','image/jpeg','image/png','image/webp'].includes(invoiceFile.type))) return setError('Invoice attachment must be a PDF, JPG, PNG or WebP file up to 10 MB.');
     if (!locationId) return setError('No active stock location is available. Confirm the OT_STORE location was created by migration 27.');
     if (!lines.length || lines.some((line) => !line.itemId || Number(line.quantity) <= 0 || Number(line.unitCost) < 0)) return setError('Select an item and enter a valid positive quantity and non-negative unit cost for every line.');
     const payloadLines = lines.map((line) => {
@@ -114,7 +139,7 @@ export function StockStorePage() {
       if (item.trackSerial && Number(line.quantity) !== 1) throw new Error(`${item.itemName} is serial-tracked; enter one unit per line.`);
       return { itemId: line.itemId, quantity: Number(line.quantity), unitCost: Number(line.unitCost), batchNumber: line.batchNumber || undefined, expiryDate: line.expiryDate || null, serialNumber: line.serialNumber || undefined };
     });
-    receiptMutation.mutate({ receiptId: createUuid(), locationId, vendorId: vendorId || null, invoiceNumber: invoiceNumber.trim() || undefined, invoiceDate: invoiceDate || null, notes: notes.trim() || undefined, lines: payloadLines });
+    receiptMutation.mutate({ receiptId: createUuid(), locationId, vendorId: vendorId || null, referenceNumber: `SOURCE:${receivedFrom};INDENT:${indentMode}`, invoiceNumber: invoiceNumber.trim() || undefined, invoiceDate: invoiceDate || null, notes: notes.trim() || undefined, lines: payloadLines });
   };
 
   return <Box>
@@ -159,28 +184,37 @@ export function StockStorePage() {
 
     <BarcodeScannerDialog open={scannerOpen} onClose={() => setScannerOpen(false)} onDetected={scannerTarget === 'receipt' ? handleReceiptScan : handleCountScan} />
     <Dialog open={receiptOpen} onClose={() => !receiptMutation.isPending && setReceiptOpen(false)} fullWidth maxWidth="lg">
-      <DialogTitle>Receive Stock</DialogTitle><DialogContent dividers>
+      <DialogTitle><Stack direction="row" alignItems="center" justifyContent="space-between"><span>Receive Stock</span><Stack direction="row" spacing={1}><Button size="small" onClick={loadSampleIntents} disabled={!itemsQ.data?.length}>Load Sample Intents</Button><Button size="small" color="inherit" onClick={resetDemoData} disabled={receiptMutation.isPending}>Reset Demo Data</Button></Stack></Stack></DialogTitle><DialogContent dividers>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {(locationsQ.error || itemsQ.error || vendorsQ.error) && <Alert severity="error" sx={{ mb: 2 }}>Unable to load master data: {getErrorMessage(locationsQ.error || itemsQ.error || vendorsQ.error)}</Alert>}
         {(locationsQ.isLoading || itemsQ.isLoading || vendorsQ.isLoading) ? <CircularProgress /> : <>
           <Grid container spacing={2} sx={{ mb: 2 }}>
             <Grid item xs={12} sm={6} md={3}><TextField select fullWidth label="OT Store Location" value={locationId || locationsQ.data?.[0]?.locationId || ''} onChange={(e) => setLocationId(e.target.value)}>{(locationsQ.data || []).map((l) => <MenuItem key={l.locationId} value={l.locationId}>{l.locationName} ({l.locationCode})</MenuItem>)}</TextField></Grid>
-            <Grid item xs={12} sm={6} md={3}><TextField select fullWidth label="Supplier" value={vendorId} onChange={(e) => setVendorId(e.target.value)}><MenuItem value="">Not specified</MenuItem>{(vendorsQ.data || []).map((v) => <MenuItem key={v.vendorId} value={v.vendorId}>{v.name}</MenuItem>)}</TextField></Grid>
-            <Grid item xs={12} sm={6} md={3}><TextField fullWidth label="Invoice Number" name="ot-store-invoice-reference" autoComplete="new-password" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} /></Grid>
+            <Grid item xs={12} sm={6} md={3}><TextField select fullWidth required label="Received From" value={receivedFrom} onChange={(e) => { setReceivedFrom(e.target.value); if (e.target.value !== 'Outside Vendor') setVendorId(''); }}><MenuItem value="Pharmacy">Pharmacy</MenuItem><MenuItem value="Central Store">Central Store</MenuItem><MenuItem value="Outside Vendor">Outside Vendor</MenuItem></TextField></Grid>
+            {receivedFrom === 'Outside Vendor' && <Grid item xs={12} sm={6} md={3}><TextField select fullWidth required label="Supplier" value={vendorId} onChange={(e) => setVendorId(e.target.value)}><MenuItem value="">Select supplier</MenuItem>{(vendorsQ.data || []).map((v) => <MenuItem key={v.vendorId} value={v.vendorId}>{v.name}</MenuItem>)}</TextField></Grid>}
+            <Grid item xs={12} sm={6} md={3}><TextField select fullWidth label="Against Indent" value={indentMode} onChange={(e) => setIndentMode(e.target.value)}><MenuItem value="MANUAL">— Without indent (manual) —</MenuItem></TextField></Grid>
+            <Grid item xs={12} sm={6} md={3}><TextField fullWidth label="Invoice / Bill Number — optional" name="ot-store-invoice-reference" autoComplete="off" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Pharmacy bill no. (if given)" /></Grid>
             <Grid item xs={12} sm={6} md={3}><TextField fullWidth type="date" label="Invoice Date" InputLabelProps={{ shrink: true }} value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} /></Grid>
+            <Grid item xs={12} sm={6} md={6}><Button component="label" variant="outlined" fullWidth sx={{ minHeight: 56, justifyContent: 'flex-start', textTransform: 'none' }}>Bill / Invoice upload (PDF or photo) — optional<input hidden type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => setInvoiceFile(e.target.files?.[0] || null)} /></Button><Typography variant="caption" color="text.secondary">{invoiceFile ? invoiceFile.name : 'No file selected · PDF/JPG/PNG/WebP up to 10 MB'}</Typography></Grid>
             <Grid item xs={12}><TextField fullWidth multiline minRows={2} label="Notes" name="ot-store-receipt-notes" autoComplete="off" value={notes} onChange={(e) => setNotes(e.target.value)} /></Grid>
           </Grid>
           {!(itemsQ.data || []).length && <Alert severity="info" sx={{ mb: 2 }}>No stock-ready items. Set a Base UOM in Item Master first.</Alert>}
-          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ mb: 1 }}><Typography variant="h6">Items</Typography><Stack direction="row" spacing={1}><TextField size="small" label="Search Item Master" name="ot-store-item-search" autoComplete="off" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} /><Button startIcon={<QrCodeScanner />} onClick={() => { setScannerTarget('receipt'); setScannerOpen(true); }}>Scan</Button><Button startIcon={<Add />} onClick={() => setLines((prev) => [...prev, blankLine()])}>Add Line</Button>{hasPermission('EDIT_MASTERS') && <Button size="small" onClick={() => navigate('/admin/config')}>Manage Item Master</Button>}</Stack></Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ mb: 1 }}><Typography variant="h6">Items</Typography><Stack direction="row" spacing={1}><TextField size="small" label="Search Item Master" name="ot-store-item-search" autoComplete="off" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} /><Button startIcon={<QrCodeScanner />} onClick={() => { setScannerTarget('receipt'); setScannerOpen(true); }}>Scan</Button><Button startIcon={<Add />} onClick={() => setLines((prev) => [...prev, blankLine()])}>Add Line</Button>{hasPermission('EDIT_MASTERS') && <><Button size="small" onClick={() => setAddItemOpen(true)}>Add Item</Button><Button size="small" onClick={() => navigate('/admin/config')}>Manage Item Master</Button></>}</Stack></Stack>
           {lines.map((line, index) => {
             const item = itemById.get(line.itemId) as StockItem | undefined;
+            const inOtNow = Number((balanceSummaryQ.data || []).find((row) => row.itemId === line.itemId)?.onHandQty || 0);
+            const fixedQty = Number(item?.fixedQtyInOt || 0);
+            const requiredToRefill = Math.max(0, fixedQty - inOtNow);
             return <Paper variant="outlined" sx={{ p: 2, mb: 1.5 }} key={line.key}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}><Typography fontWeight={700}>Item {index + 1}</Typography><IconButton color="error" disabled={lines.length === 1} onClick={() => setLines((prev) => prev.filter((x) => x.key !== line.key))}><DeleteOutline /></IconButton></Stack><Grid container spacing={1.5}>
-              <Grid item xs={12} md={4}><TextField select fullWidth label="Item" value={line.itemId} onChange={(e) => { const chosen = itemById.get(e.target.value); updateLine(line.key, { itemId: e.target.value, unitCost: Number(chosen?.purchaseRate ?? chosen?.standardCost ?? 0) }); }}>{selectableItems.map((it) => <MenuItem key={it.itemId} value={it.itemId} disabled={!it.uom?.trim()}>{it.itemCode} — {it.itemName}{it.uom ? ` (${it.uom})` : ' — UOM missing; update Item Master'}</MenuItem>)}</TextField></Grid>
-              <Grid item xs={6} md={2}><TextField fullWidth type="number" label={`Quantity${item?.uom ? ` (${item.uom})` : ''}`} inputProps={{ min: 0.001, step: 'any' }} value={line.quantity} onChange={(e) => updateLine(line.key, { quantity: Number(e.target.value) })} /></Grid>
-              <Grid item xs={6} md={2}><TextField fullWidth type="number" label="Unit Cost (₹)" inputProps={{ min: 0, step: '0.01' }} value={line.unitCost} onChange={(e) => updateLine(line.key, { unitCost: Number(e.target.value) })} /></Grid>
-              {item?.trackBatch && <Grid item xs={6} md={2}><TextField fullWidth required label="Batch Number" value={line.batchNumber || ''} onChange={(e) => updateLine(line.key, { batchNumber: e.target.value })} /></Grid>}
-              {item?.trackExpiry && <Grid item xs={6} md={2}><TextField fullWidth required type="date" label="Expiry Date" InputLabelProps={{ shrink: true }} inputProps={{ min: today() }} value={line.expiryDate || ''} onChange={(e) => updateLine(line.key, { expiryDate: e.target.value })} /></Grid>}
-              {item?.trackSerial && <Grid item xs={12} md={3}><TextField fullWidth required label="Serial Number" value={line.serialNumber || ''} onChange={(e) => updateLine(line.key, { serialNumber: e.target.value })} /></Grid>}
+              <Grid item xs={12} md={4}><TextField select fullWidth required label="Item" value={line.itemId} onChange={(e) => { const chosen = itemById.get(e.target.value); updateLine(line.key, { itemId: e.target.value, unitCost: Number(chosen?.purchaseRate ?? chosen?.standardCost ?? 0), batchNumber: '', expiryDate: '', serialNumber: '' }); }}>{selectableItems.map((it) => <MenuItem key={it.itemId} value={it.itemId} disabled={!it.uom?.trim()}>{it.itemCode} — {it.itemName}{it.uom ? ` (${it.uom})` : ' — UOM missing; update Item Master'}</MenuItem>)}</TextField></Grid>
+              <Grid item xs={6} md={2}><TextField fullWidth label="Fixed Qty" value={item ? `${fixedQty} ${item.uom || ''}` : '—'} InputProps={{ readOnly: true }} /></Grid>
+              <Grid item xs={6} md={2}><TextField fullWidth label="In OT now" value={item ? (balanceSummaryQ.isLoading ? 'Loading…' : `${inOtNow} ${item.uom || ''}`) : '—'} InputProps={{ readOnly: true }} /></Grid>
+              <Grid item xs={6} md={2}><TextField fullWidth label="Required to refill" value={item ? (balanceSummaryQ.isLoading ? 'Loading…' : `${requiredToRefill} ${item.uom || ''}`) : '—'} InputProps={{ readOnly: true }} /></Grid>
+              <Grid item xs={6} md={2}><TextField fullWidth required type="number" label={`Quantity received${item?.uom ? ` (${item.uom})` : ''}`} inputProps={{ min: 0.001, step: 'any' }} value={line.quantity} onChange={(e) => updateLine(line.key, { quantity: Number(e.target.value) })} /></Grid>
+              {item?.trackBatch && <Grid item xs={12} md={4}><TextField fullWidth required label="Batch No" value={line.batchNumber || ''} onChange={(e) => updateLine(line.key, { batchNumber: e.target.value })} /></Grid>}
+              {item?.trackExpiry && <Grid item xs={12} md={4}><TextField fullWidth required type="date" label="Expiry Date" InputLabelProps={{ shrink: true }} inputProps={{ min: today() }} value={line.expiryDate || ''} onChange={(e) => updateLine(line.key, { expiryDate: e.target.value })} /></Grid>}
+              <Grid item xs={12} md={item?.trackBatch || item?.trackExpiry ? 4 : 6}><TextField fullWidth type="number" label="Unit Cost (₹)" inputProps={{ min: 0, step: '0.01' }} value={line.unitCost} onChange={(e) => updateLine(line.key, { unitCost: Number(e.target.value) })} /></Grid>
+              {item?.trackSerial && <Grid item xs={12} md={4}><TextField fullWidth required label="Serial Number" value={line.serialNumber || ''} onChange={(e) => updateLine(line.key, { serialNumber: e.target.value })} /></Grid>}
               <Grid item xs={12}><Typography variant="body2" color="text.secondary">Line total: {money(Number(line.quantity) * Number(line.unitCost))}{item && ` • Base unit: ${item.uom || 'not configured'}`}</Typography></Grid>
             </Grid></Paper>;
           })}
@@ -188,10 +222,11 @@ export function StockStorePage() {
         </>}
       </DialogContent><DialogActions><Button onClick={() => setReceiptOpen(false)} disabled={receiptMutation.isPending}>Cancel</Button><Button variant="contained" onClick={submitReceipt} disabled={receiptMutation.isPending || locationsQ.isLoading || itemsQ.isLoading || !itemsQ.data?.some((item) => !!item.uom?.trim())}>{receiptMutation.isPending ? 'Saving…' : 'Save Receipt'}</Button></DialogActions>
     </Dialog>
+    <OtItemMasterDialog open={addItemOpen} onClose={() => setAddItemOpen(false)} onSaved={(itemId) => { setAddItemOpen(false); qc.invalidateQueries({ queryKey: ['stock','items'] }); setLines((prev) => [...prev.filter((line) => !!line.itemId), { ...blankLine(), itemId }]); setSuccess('Item created successfully. It is now available in Receive Stock.'); setError(''); }} />
   </Box>;
 }
 
 function ReceiptTable({ rows, loading }: { rows: Array<import('@/api/stock.api').StockReceipt>; loading: boolean }) {
   if (loading) return <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={26} /></Box>;
-  return <TableContainer><Table size="small"><TableHead><TableRow>{['Received','Invoice / Receipt','Supplier','Location','Lines','Total','Received By'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map((r) => <TableRow key={r.receiptId}><TableCell>{dateText(r.receivedAt)}</TableCell><TableCell>{r.invoiceNumber || r.receiptNumber || r.receiptId.slice(0, 8)}</TableCell><TableCell>{r.vendorName || '—'}</TableCell><TableCell>{r.locationCode || '—'}</TableCell><TableCell>{r.lineCount ?? r.lines?.length ?? '—'}</TableCell><TableCell>{money(r.receiptTotal)}</TableCell><TableCell>{r.receivedByName || '—'}</TableCell></TableRow>)}{!rows.length && <TableRow><TableCell colSpan={7} align="center">No receipts found.</TableCell></TableRow>}</TableBody></Table></TableContainer>;
+  return <TableContainer><Table size="small"><TableHead><TableRow>{['Received','Invoice / Receipt','Supplier','Location','Lines','Total','Invoice File','Received By'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map((r) => <TableRow key={r.receiptId}><TableCell>{dateText(r.receivedAt)}</TableCell><TableCell>{r.invoiceNumber || r.receiptNumber || r.receiptId.slice(0, 8)}</TableCell><TableCell>{r.vendorName || '—'}</TableCell><TableCell>{r.locationCode || '—'}</TableCell><TableCell>{r.lineCount ?? r.lines?.length ?? '—'}</TableCell><TableCell>{money(r.receiptTotal)}</TableCell><TableCell>{r.invoiceFileName ? <Button size="small" onClick={() => void stockApi.downloadReceiptInvoice(r.receiptId)}>Download</Button> : '—'}</TableCell><TableCell>{r.receivedByName || '—'}</TableCell></TableRow>)}{!rows.length && <TableRow><TableCell colSpan={8} align="center">No receipts found.</TableCell></TableRow>}</TableBody></Table></TableContainer>;
 }

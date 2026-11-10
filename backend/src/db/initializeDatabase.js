@@ -53,10 +53,10 @@ const SCHEMA_FILES = [
   path.join(DB_DIR, 'split', '24_procedure_card.sql'),
   path.join(DB_DIR, 'split', '25_case_condition_payer.sql'),
   path.join(DB_DIR, 'split', '26_surgery_number.sql'),
-  // New tracked migrations 27-30 are discovered by sequence number. Existing
+  // Tracked migrations 27-39 are discovered by sequence number. Existing
   // 01-26 bootstrap behavior is intentionally preserved.
   ...fs.readdirSync(path.join(DB_DIR, 'split'))
-    .filter((name) => /^([3-9][0-9]|[1-9][0-9]{2,})_.+\.sql$/.test(name))
+    .filter((name) => /^(2[7-9]|3[0-9]|[1-9][0-9]{2,})_.+\.sql$/.test(name))
     .sort()
     .map((name) => path.join(DB_DIR, 'split', name)),
 ];
@@ -151,9 +151,9 @@ async function initializeDatabase() {
   try {
     for (const filePath of SCHEMA_FILES) {
       const label = path.basename(filePath);
-      const migrationMatch = label.match(/^(2[7-9]|30)_(.+)\.sql$/);
+      const migrationMatch = label.match(/^(2[7-9]|3[0-9])_(.+)\.sql$/);
       try {
-        // Keep legacy migrations 01-26 unchanged. Migrations 27-30 are tracked,
+        // Keep legacy migrations 01-26 unchanged. Migrations 27-39 are tracked,
         // transactional, and skipped after successful application.
         if (migrationMatch) {
           await client.query(`

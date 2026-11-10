@@ -4,6 +4,9 @@ const express = require('express');
 const controller = require('./dashboard.controller');
 const validate = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
+const { requirePermission } = require('../../middleware/permission.middleware');
+const Joi = require('joi');
+const uuid = require('../stock/uuid.validation');
 const { summaryQuery, topNQuery, forecastQuery } = require('./dashboard.validation');
 
 const router = express.Router();
@@ -36,6 +39,10 @@ const router = express.Router();
  *       200: { description: KPI totals + monthly trend series }
  */
 router.get('/summary', authenticate, validate({ query: summaryQuery }), controller.summary);
+router.get('/ot-stock-alerts', authenticate, controller.otStockAlerts);
+router.get('/ot-fixed-stock-targets', authenticate, requirePermission('MANAGE_OT_FIXED_STOCK'), controller.fixedStockTargets);
+router.put('/ot-fixed-stock-targets', authenticate, requirePermission('MANAGE_OT_FIXED_STOCK'), validate({ body: Joi.object({ itemId: uuid.required(), locationId: uuid.required(), fixedQty: Joi.number().precision(3).min(0).required() }) }), controller.saveFixedStockTarget);
+router.post('/ot-expiry-alerts/close', authenticate, requirePermission('CLOSE_STOCK_ALERTS'), validate({ body: Joi.object({ itemId: uuid.required(), locationId: uuid.required(), batchNumber: Joi.string().allow('', null).max(120), expiryDate: Joi.date().iso().when('scope', { is: 'CATEGORY', then: Joi.optional(), otherwise: Joi.required() }), scope: Joi.string().valid('BATCH','CATEGORY').default('BATCH'), remarks: Joi.string().trim().min(3).max(1000).required() }) }), controller.closeOtExpiryAlert);
 
 /**
  * @swagger

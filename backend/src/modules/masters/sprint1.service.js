@@ -1,4 +1,5 @@
 'use strict';
+const { randomUUID } = require('node:crypto');
 const { query, queryRows, queryOne, withTransaction } = require('../../config/db');
 const ApiError = require('../../utils/ApiError');
 const RESOURCES = {
@@ -6,7 +7,7 @@ const RESOURCES = {
  instruments: { table:'instruments', id:'instrument_id', search:['name','brand'], active:true, fields:['name','brand','owned_qty','remarks','is_active'] },
  sets: { table:'instrument_sets', id:'set_id', search:['name','specialty'], active:true, fields:['name','specialty','validity_days','set_count','is_active'] },
  assets: { table:'assets', id:'asset_id', search:['asset_code','name','serial_no','location_text'], active:true, fields:['asset_code','name','category','make','model','serial_no','ot_room_id','location_text','purchase_date','purchase_cost','vendor_id','amc_vendor_id','amc_expiry','last_service_date','next_service_due','status','remarks','is_active'] },
- items: { table:'consumable_items', id:'item_id', search:['item_name','item_code','generic_name','brand'], active:true, fields:['item_code','item_name','unit','standard_cost','category','is_billable','generic_name','spec','brand','suture_brand_line','suture_size','needle_mm','needle_code','length_cm','material','absorbable','uom','pack_size','pack_uom','track_batch','track_expiry','track_serial','purchase_rate','reorder_level','min_level','default_vendor_id','order_code','hsn_code','is_active'] },
+ items: { table:'consumable_items', id:'item_id', search:['item_name','item_code','generic_name','brand'], active:true, fields:['item_code','item_name','unit','standard_cost','category','is_billable','generic_name','spec','brand','suture_brand_line','suture_size','needle_mm','needle_code','length_cm','material','absorbable','uom','pack_size','pack_uom','track_batch','track_expiry','track_serial','purchase_rate','reorder_level','min_level','default_vendor_id','order_code','hsn_code','is_active','storage','fixed_qty_in_ot','default_source','is_controlled_high_alert','remarks','added_on'] },
 };
 const snakeToCamel = (s) => s.replace(/_([a-z])/g,(_,c)=>c.toUpperCase());
 function camelRow(row) { return Object.fromEntries(Object.entries(row).map(([k,v])=>[snakeToCamel(k),v])); }
@@ -27,14 +28,68 @@ async function list(name, params={}) {
 }
 async function create(name,data,userId) {
  const r=resource(name); const safe={}; for(const f of r.fields){if(data[f]!==undefined)safe[f]=data[f]}
- if(name==='items') { safe.item_name=String(safe.item_name||'').trim().replace(/\s+/g,' '); if(!safe.item_name)throw ApiError.badRequest('Item name is required.'); if(!String(safe.item_code||'').trim()){const generated=await queryOne("SELECT 'ITM-' || lpad(nextval('consumable_item_code_seq')::text,4,'0') AS item_code");safe.item_code=generated.item_code;} if(!String(safe.uom||'').trim())throw ApiError.badRequest('Base unit of measure is required for OT Store.'); safe.item_code=String(safe.item_code).trim().toUpperCase(); const duplicateCode=await queryOne('SELECT item_id FROM consumable_items WHERE upper(trim(item_code))=$1',[safe.item_code]); if(duplicateCode)throw ApiError.conflict('An item with this item code already exists.'); safe.uom=String(safe.uom).trim(); safe.unit=safe.uom; if(safe.purchase_rate!==undefined && safe.purchase_rate!==null)safe.standard_cost=safe.purchase_rate; const duplicate=await queryOne("SELECT item_id FROM consumable_items WHERE lower(regexp_replace(trim(item_name),'[[:space:]]+',' ','g'))=$1",[safe.item_name.toLowerCase()]); if(duplicate)throw ApiError.conflict('An item with the same normalized name already exists.'); }
+ if(name==='items') {
+  safe.item_name=String(safe.item_name||'').trim().replace(/\s+/g,' ');
+  if(!safe.item_name)throw ApiError.badRequest('Item name is required.');
+  if(!String(safe.uom||'').trim())throw ApiError.badRequest('Base unit of measure is required for OT Store.');
+  safe.uom=String(safe.uom).trim(); safe.unit=safe.uom;
+  if(safe.purchase_rate!==undefined && safe.purchase_rate!==null)safe.standard_cost=safe.purchase_rate;
+  const duplicate=await queryOne("SELECT item_id FROM consumable_items WHERE lower(regexp_replace(trim(item_name),'[[:space:]]+',' ','g'))=$1",[safe.item_name.toLowerCase()]);
+  if(duplicate)throw ApiError.conflict('An item with the same normalized name already exists.');
+  // Generate the OT item code while holding a transaction-scoped advisory lock.
+  // This uses the existing consumable_items table; no schema/migration change is needed.
+  return withTransaction(async client=>{
+   await client.query("SELECT pg_advisory_xact_lock(hashtext('hospital.item-master.ot-code'))");
+   const next=await client.query("SELECT COALESCE(MAX(substring(item_code from '^OT([0-9]+)$')::bigint),0)+1 AS next_code FROM consumable_items WHERE item_code ~ '^OT[0-9]+$'");
+   const generatedCode=`OT${String(next.rows[0].next_code).padStart(3,'0')}`;
+   const duplicateCode=await client.query('SELECT item_id FROM consumable_items WHERE upper(trim(item_code))=$1',[generatedCode]);
+   if(duplicateCode.rows[0])throw ApiError.conflict('Unable to generate a unique item code. Please retry.');
+   safe.item_code=generatedCode;
+   const keys=Object.keys(safe); const params=keys.map(k=>safe[k]);
+   const {rows}=await client.query(`INSERT INTO ${r.table}(${keys.join(', ')},created_by) VALUES(${params.map((_,i)=>`$${i+1}`).join(', ')},$${params.length+1}) RETURNING *`,[...params,userId||null]);
+   const created = rows[0];
+   const openingQty = Number(data.opening_qty || 0);
+   if (!Number.isFinite(openingQty) || openingQty < 0) throw ApiError.badRequest('Opening stock quantity must be zero or greater.');
+   const batchNumber = data.opening_batch_no ? String(data.opening_batch_no).trim() : null;
+   const expiryDate = data.opening_expiry_date || null;
+   const serialNumber = data.opening_serial_no ? String(data.opening_serial_no).trim() : null;
+   if (openingQty > 0 && (safe.track_batch || safe.track_expiry) && !batchNumber) throw ApiError.badRequest('Batch number is required when batch or expiry tracking is enabled.');
+   if (openingQty > 0 && safe.track_expiry && !expiryDate) throw ApiError.badRequest('Expiry date is required when expiry tracking is enabled.');
+   if (openingQty > 0 && safe.track_serial && (!serialNumber || openingQty !== 1)) throw ApiError.badRequest('Serial-tracked opening stock requires one serial number and quantity 1.');
+   const fixedQty = Number(safe.fixed_qty_in_ot || 0);
+   let locationId = null;
+   if (openingQty > 0 || fixedQty > 0) {
+    const locationResult = await client.query(
+     `SELECT location_id FROM stock_locations WHERE lower(trim(location_code))='ot_store' AND is_active=TRUE LIMIT 1`
+    );
+    locationId = locationResult.rows[0]?.location_id;
+    if (!locationId) throw ApiError.badRequest('OT Store location is not configured. Please run the stock setup migration.');
+   }
+   if (openingQty > 0) {
+    await client.query(
+     `INSERT INTO stock_ledger
+       (item_id,location_id,txn_type,qty_in,qty_out,uom,batch_number,expiry_date,serial_number,unit_cost,reason,idempotency_key,entered_by)
+      VALUES ($1,$2,'OPENING',$3,0,$4,$5,$6,$7,$8,$9,$10,$11)`,
+     [created.item_id,locationId,openingQty,safe.uom,batchNumber,expiryDate,serialNumber,safe.purchase_rate ?? null,'Opening physical stock entered while creating OT item',randomUUID(),userId]
+    );
+   }
+   if (fixedQty > 0) {
+    await client.query(
+     `INSERT INTO ot_fixed_stock_targets(item_id,location_id,fixed_qty,configured_by)
+      VALUES($1,$2,$3,$4)
+      ON CONFLICT (item_id,location_id) DO UPDATE SET fixed_qty=EXCLUDED.fixed_qty,is_active=TRUE,configured_by=EXCLUDED.configured_by,updated_at=now()`,
+     [created.item_id,locationId,fixedQty,userId || null]
+    );
+   }
+   return camelRow(created);
+  });
+ }
  if(name==='vendors') safe.name=String(safe.name||'').trim();
  if(name==='instruments') safe.name=String(safe.name||'').trim();
  if(name==='sets') safe.name=String(safe.name||'').trim();
  const keys=Object.keys(safe); if(!keys.length)throw ApiError.badRequest('No valid fields supplied.');
- if(!keys.includes('created_by') && ['vendors','instruments','sets','assets','items'].includes(name)) { /* created_by is added separately where supported */ }
- const cols=keys.map(k=>k).join(', '), params=keys.map((k)=>safe[k]);
- const {rows}=await query(`INSERT INTO ${r.table}(${cols}${name==='items'?',created_by':',created_by'}) VALUES(${params.map((_,i)=>`$${i+1}`).join(', ')},$${params.length+1}) RETURNING *`,[...params,userId||null]);
+ const cols=keys.join(', '), params=keys.map(k=>safe[k]);
+ const {rows}=await query(`INSERT INTO ${r.table}(${cols},created_by) VALUES(${params.map((_,i)=>`$${i+1}`).join(', ')},$${params.length+1}) RETURNING *`,[...params,userId||null]);
  return camelRow(rows[0]);
 }
 async function update(name,id,data,userId) {

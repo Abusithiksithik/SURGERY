@@ -54,6 +54,46 @@ const forecast = asyncHandler(async (req, res) => {
   return new ApiResponse(200, data, 'Forecast').send(res);
 });
 
+
+function camelizeRow(row) {
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [
+    key.replace(/_([a-z])/g, (_m, c) => c.toUpperCase()), value,
+  ]));
+}
+const otStockAlerts = asyncHandler(async (_req, res) => {
+  const [fixedRaw, expiryRaw, closedRaw, configuredTargets] = await Promise.all([service.otFixedStockAlerts(), service.otExpiryAlerts(), service.closedOtExpiryAlerts(), service.listFixedStockTargets()]);
+  const fixedStock = fixedRaw.map(camelizeRow);
+  const expiry = expiryRaw.map(camelizeRow);
+  const closedExpiry = closedRaw.map(camelizeRow);
+  return new ApiResponse(200, {
+    fixedStock: {
+      items: fixedStock,
+      yellowCount: fixedStock.filter((x) => x.severity === 'YELLOW').length,
+      redCount: fixedStock.filter((x) => x.severity === 'RED').length,
+      configuredCount: configuredTargets.length,
+    },
+    expiry: {
+      items: expiry,
+      expiredCount: expiry.filter((x) => x.status === 'EXPIRED').length,
+      withinThreeMonthsCount: expiry.filter((x) => x.status !== 'EXPIRED').length,
+      closedItems: closedExpiry,
+      closedCount: closedExpiry.length,
+    },
+  }, 'OT stock dashboard alerts').send(res);
+});
+const fixedStockTargets = asyncHandler(async (_req, res) => {
+  const rows = (await service.listFixedStockTargets()).map(camelizeRow);
+  return new ApiResponse(200, rows, 'OT fixed stock targets').send(res);
+});
+const saveFixedStockTarget = asyncHandler(async (req, res) => {
+  const row = await service.saveFixedStockTarget({ ...req.body, userId: req.user.userId });
+  return new ApiResponse(200, camelizeRow(row), 'Fixed stock target saved').send(res);
+});
+const closeOtExpiryAlert = asyncHandler(async (req, res) => {
+  const row = await service.closeOtExpiryAlert({ ...req.body, userId: req.user.userId });
+  return new ApiResponse(201, row, 'Expiry alert closed').send(res);
+});
+
 module.exports = {
   summary,
   topProfitable,
@@ -65,4 +105,8 @@ module.exports = {
   branchComparison,
   doctorComparison,
   forecast,
+  otStockAlerts,
+  fixedStockTargets,
+  saveFixedStockTarget,
+  closeOtExpiryAlert,
 };
