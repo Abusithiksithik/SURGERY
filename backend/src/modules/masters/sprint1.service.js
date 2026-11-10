@@ -50,12 +50,23 @@ async function create(name,data,userId) {
    const created = rows[0];
    const openingQty = Number(data.opening_qty || 0);
    if (!Number.isFinite(openingQty) || openingQty < 0) throw ApiError.badRequest('Opening stock quantity must be zero or greater.');
-   const batchNumber = data.opening_batch_no ? String(data.opening_batch_no).trim() : null;
-   const expiryDate = data.opening_expiry_date || null;
-   const serialNumber = data.opening_serial_no ? String(data.opening_serial_no).trim() : null;
-   if (openingQty > 0 && (safe.track_batch || safe.track_expiry) && !batchNumber) throw ApiError.badRequest('Batch number is required when batch or expiry tracking is enabled.');
-   if (openingQty > 0 && safe.track_expiry && !expiryDate) throw ApiError.badRequest('Expiry date is required when expiry tracking is enabled.');
-   if (openingQty > 0 && safe.track_serial && (!serialNumber || openingQty !== 1)) throw ApiError.badRequest('Serial-tracked opening stock requires one serial number and quantity 1.');
+   const openingBatches = Array.isArray(data.opening_batches) && data.opening_batches.length
+    ? data.opening_batches.map((row, index) => ({
+       quantity: Number(row.quantity),
+       batchNumber: row.batch_no ? String(row.batch_no).trim() : null,
+       expiryDate: row.expiry_date || null,
+       serialNumber: row.serial_no ? String(row.serial_no).trim() : null,
+      }))
+    : (openingQty > 0 ? [{ quantity: openingQty, batchNumber: data.opening_batch_no ? String(data.opening_batch_no).trim() : null, expiryDate: data.opening_expiry_date || null, serialNumber: data.opening_serial_no ? String(data.opening_serial_no).trim() : null }] : []);
+   if (openingBatches.some(row => !Number.isFinite(row.quantity) || row.quantity <= 0)) throw ApiError.badRequest('Each opening batch quantity must be greater than zero.');
+   const batchTotal = openingBatches.reduce((sum, row) => sum + row.quantity, 0);
+   if (openingQty > 0 && Math.abs(batchTotal - openingQty) > 0.000001) throw ApiError.badRequest('The sum of batch quantities must equal Qty in OT now.');
+   openingBatches.forEach((row, index) => {
+    if (safe.track_batch && !row.batchNumber) throw ApiError.badRequest(`Batch number is required for opening stock row ${index + 1}.`);
+    if (safe.track_expiry && !row.expiryDate) throw ApiError.badRequest(`Expiry date is required for opening stock row ${index + 1}.`);
+    if (safe.track_serial && (!row.serialNumber || row.quantity !== 1)) throw ApiError.badRequest(`Serial-tracked opening stock row ${index + 1} requires quantity 1 and a serial number.`);
+   });
+   if (safe.track_serial && openingBatches.length !== openingQty) throw ApiError.badRequest('Serial-tracked opening stock requires one row per unit.');
    const fixedQty = Number(safe.fixed_qty_in_ot || 0);
    let locationId = null;
    if (openingQty > 0 || fixedQty > 0) {
@@ -65,12 +76,12 @@ async function create(name,data,userId) {
     locationId = locationResult.rows[0]?.location_id;
     if (!locationId) throw ApiError.badRequest('OT Store location is not configured. Please run the stock setup migration.');
    }
-   if (openingQty > 0) {
+   for (const row of openingBatches) {
     await client.query(
      `INSERT INTO stock_ledger
        (item_id,location_id,txn_type,qty_in,qty_out,uom,batch_number,expiry_date,serial_number,unit_cost,reason,idempotency_key,entered_by)
       VALUES ($1,$2,'OPENING',$3,0,$4,$5,$6,$7,$8,$9,$10,$11)`,
-     [created.item_id,locationId,openingQty,safe.uom,batchNumber,expiryDate,serialNumber,safe.purchase_rate ?? null,'Opening physical stock entered while creating OT item',randomUUID(),userId]
+     [created.item_id,locationId,row.quantity,safe.uom,row.batchNumber,row.expiryDate,row.serialNumber,safe.purchase_rate ?? null,'Opening physical stock batch entered while creating OT item',randomUUID(),userId]
     );
    }
    if (fixedQty > 0) {

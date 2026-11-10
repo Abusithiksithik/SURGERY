@@ -43,3 +43,28 @@ test('Item API validates the OT item categories and opening stock fields', () =>
   assert.match(routes, /opening_batch_no:Joi\.string\(\)/);
   assert.match(routes, /opening_expiry_date:Joi\.date\(\)\.iso\(\)/);
 });
+
+
+test('opening stock creates separate batch rows with independent batch and expiry values', () => {
+  const ui = read('frontend/src/features/stock/components/OtItemMasterDialog.tsx');
+  const service = read('backend/src/modules/masters/sprint1.service.js');
+  const routes = read('backend/src/modules/masters/sprint1.routes.js');
+  assert.match(ui, /opening_batches:form\.opening_batches\.map/);
+  assert.match(ui, /Opening Batch \{index\+1\}/);
+  assert.match(ui, /The sum of batch quantities must equal Qty in OT now/);
+  assert.match(ui, /form\.opening_batches\.some\(row=>!row\.batch_no\.trim\(\)\)/);
+  assert.match(ui, /form\.opening_batches\.some\(row=>!row\.expiry_date\)/);
+  assert.match(service, /const openingBatches = Array\.isArray\(data\.opening_batches\)/);
+  assert.match(service, /batchTotal - openingQty/);
+  assert.match(service, /for \(const row of openingBatches\)/);
+  assert.match(service, /row\.batchNumber,row\.expiryDate/);
+  assert.match(routes, /opening_batches:Joi\.array\(\)/);
+});
+
+
+test('default vendor is optional for OT items when replacement source does not require a selected vendor', () => {
+  const routes = read('backend/src/modules/masters/sprint1.routes.js');
+  assert.match(routes, /const optionalVendorId=Joi\.string\(\)\.uuid\(\)\.allow\(null\)\.optional\(\)/);
+  assert.match(routes, /default_vendor_id:optionalVendorId/);
+  assert.doesNotMatch(routes, /default_vendor_id:id\.allow\(null\)/);
+});

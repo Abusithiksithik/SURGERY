@@ -85,7 +85,11 @@ export function getErrorMessage(error: unknown): string {
     if (!error.response && error.code !== 'ERR_CANCELED') {
       return 'Server connection lost. Please retry.';
     }
-    const data = error.response?.data as { message?: string; details?: unknown } | undefined;
+    const data = error.response?.data as { message?: string; details?: Array<{ field?: string; message?: string }> } | undefined;
+    if (data?.details?.length) {
+      const detailText = data.details.map((item) => item.field ? `${item.field}: ${item.message || 'invalid value'}` : item.message).filter(Boolean).join('; ');
+      if (detailText) return `${data.message || 'Request validation failed'} — ${detailText}`;
+    }
     if (data?.message) return data.message;
     if (error.response?.status === 401) return 'Session expired. Please sign in again.';
     if ((error.response?.status ?? 0) >= 500) return 'Server error. Please try again.';
